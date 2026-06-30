@@ -1,6 +1,10 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // Foto bukti transfer bisa > 1MB (default limit server action).
+    serverActions: { bodySizeLimit: "8mb" },
+  },
   allowedDevOrigins: [
     "192.168.150.56",
     "192.168.*.*",

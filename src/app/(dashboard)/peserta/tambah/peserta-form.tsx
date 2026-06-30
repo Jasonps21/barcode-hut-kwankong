@@ -1,12 +1,14 @@
 "use client";
 
-import { useActionState, useState } from "react";
+import { useActionState, useMemo, useState } from "react";
 import { Camera, CameraOff, Loader2, Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { RupiahInput } from "@/components/ui/rupiah-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
 import { QrScanner } from "@/components/scanner/qr-scanner";
+import { hanziToPinyin } from "@/lib/pinyin";
 import { createPesertaAction, type CreatePesertaState } from "../actions";
 
 export function PesertaForm() {
@@ -17,6 +19,9 @@ export function PesertaForm() {
   const [kupons, setKupons] = useState<string[]>([]);
   const [scanOn, setScanOn] = useState(false);
   const [manual, setManual] = useState("");
+  const [namaHanzi, setNamaHanzi] = useState("");
+  const [metode, setMetode] = useState("");
+  const pinyinPreview = useMemo(() => hanziToPinyin(namaHanzi), [namaHanzi]);
 
   function addKupon(raw: string) {
     const v = raw.trim().toUpperCase();
@@ -39,13 +44,49 @@ export function PesertaForm() {
           <Input id="no_whatsapp" name="no_whatsapp" inputMode="tel" placeholder="08xxxxxxxxxx" required />
         </div>
         <div className="space-y-2 md:col-span-2">
+          <Label htmlFor="nama_hanzi">Nama Hanzi (opsional)</Label>
+          <Input
+            id="nama_hanzi"
+            name="nama_hanzi"
+            value={namaHanzi}
+            onChange={(e) => setNamaHanzi(e.target.value)}
+            placeholder="陳為慶"
+            lang="zh"
+          />
+          <input type="hidden" name="pinyin" value={pinyinPreview} />
+          {namaHanzi.trim() && (
+            <p className="text-xs text-muted-foreground">
+              Pinyin (otomatis):{" "}
+              <span className="font-medium text-foreground">{pinyinPreview || "—"}</span>
+            </p>
+          )}
+        </div>
+        <div className="space-y-2 md:col-span-2">
           <Label htmlFor="alamat">Alamat</Label>
           <Input id="alamat" name="alamat" required />
         </div>
         <div className="space-y-2">
-          <Label htmlFor="nominal_donasi">Nominal Donasi (Rp)</Label>
-          <Input id="nominal_donasi" name="nominal_donasi" inputMode="numeric" placeholder="100000" required />
+          <Label htmlFor="nominal_donasi">Nominal Donasi</Label>
+          <RupiahInput id="nominal_donasi" name="nominal_donasi" placeholder="100.000" required />
         </div>
+        <div className="space-y-2">
+          <Label>Metode Bayar</Label>
+          <div className="flex gap-2">
+            <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground">
+              <input type="radio" name="metode_bayar" value="cash" required className="sr-only" onChange={() => setMetode("cash")} /> Cash
+            </label>
+            <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground">
+              <input type="radio" name="metode_bayar" value="transfer" required className="sr-only" onChange={() => setMetode("transfer")} /> Transfer
+            </label>
+          </div>
+        </div>
+        {metode === "transfer" && (
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="bukti">Bukti Transfer (opsional)</Label>
+            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" />
+            <p className="text-xs text-muted-foreground">Foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
+          </div>
+        )}
       </div>
 
       <div className="space-y-3 rounded-lg border bg-muted/30 p-4">

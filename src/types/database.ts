@@ -1,6 +1,7 @@
 export type Role = "admin" | "petugas_pendaftaran" | "petugas_distribusi";
 export type WaStatus = "pending" | "sent" | "failed" | "not_sent";
 export type KuponStatus = "available" | "assigned" | "redeemed";
+export type MetodeBayar = "cash" | "transfer";
 
 export interface Kelompok {
   id: string;
@@ -23,9 +24,15 @@ export interface Profile {
 export interface Peserta {
   id: string;
   nama: string;
+  nama_hanzi: string | null;
+  pinyin: string | null;
   alamat: string;
   no_whatsapp: string;
   nominal_donasi: number;
+  metode_bayar: MetodeBayar | null;
+  bukti_transfer_path: string | null;
+  registered_at: string | null;
+  nomor_tt: number | null;
   kelompok_id: string;
   wa_status: WaStatus;
   wa_sent_at: string | null;

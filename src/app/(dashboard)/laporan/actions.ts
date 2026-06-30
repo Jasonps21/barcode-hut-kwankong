@@ -39,3 +39,59 @@ export async function exportPesertaCsv(): Promise<void> {
   const dataUrl = "data:text/csv;charset=utf-8," + encodeURIComponent(csv);
   redirect(dataUrl);
 }
+
+/** Rentang waktu dari input date (YYYY-MM-DD) -> ISO awal & akhir hari. */
+function dayRange(from: string, to: string) {
+  const fromISO = from ? `${from}T00:00:00` : null;
+  const toISO = to ? `${to}T23:59:59.999` : null;
+  return { fromISO, toISO };
+}
+
+/** Export rekap uang masuk (registrasi) terfilter — untuk dicocokkan dgn mutasi bank. */
+export async function exportUangMasukCsv(formData: FormData): Promise<void> {
+  await requireProfile(["admin"]);
+  const admin = createAdminClient();
+
+  const from = String(formData.get("from") ?? "");
+  const to = String(formData.get("to") ?? "");
+  const metode = String(formData.get("metode") ?? "all");
+  const { fromISO, toISO } = dayRange(from, to);
+
+  let q = admin
+    .from("peserta")
+    .select("nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok(nama)")
+    .not("registered_at", "is", null)
+    .order("registered_at", { ascending: true });
+  if (fromISO) q = q.gte("registered_at", fromISO);
+  if (toISO) q = q.lte("registered_at", toISO);
+  if (metode === "cash" || metode === "transfer") q = q.eq("metode_bayar", metode);
+
+  const { data } = await q;
+  const rows = (data ?? []) as unknown as Array<{
+    nama: string; nominal_donasi: number | string; metode_bayar: string | null;
+    registered_at: string | null; created_by: string | null; kelompok: { nama: string } | null;
+  }>;
+
+  // map petugas
+  const ids = [...new Set(rows.map((r) => r.created_by).filter(Boolean))] as string[];
+  const petugas = new Map<string, string>();
+  if (ids.length) {
+    const { data: profs } = await admin.from("profiles").select("id, nama").in("id", ids);
+    for (const p of (profs ?? []) as Array<{ id: string; nama: string }>) petugas.set(p.id, p.nama);
+  }
+
+  const header = ["Tanggal", "Jam", "Nama", "Kelompok", "Metode", "Nominal", "Petugas"];
+  const lines = [header.join(",")];
+  for (const r of rows) {
+    const d = r.registered_at ? new Date(r.registered_at) : null;
+    lines.push([
+      d ? d.toLocaleDateString("id-ID") : "",
+      d ? d.toLocaleTimeString("id-ID") : "",
+      r.nama, r.kelompok?.nama ?? "", r.metode_bayar ?? "",
+      r.nominal_donasi, r.created_by ? petugas.get(r.created_by) ?? "" : "",
+    ].map(csvEscape).join(","));
+  }
+
+  const csv = lines.join("\n");
+  redirect("data:text/csv;charset=utf-8," + encodeURIComponent(csv));
+}

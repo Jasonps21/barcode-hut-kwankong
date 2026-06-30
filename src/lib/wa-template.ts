@@ -1,40 +1,64 @@
 import { formatRupiah } from "@/lib/utils";
+import { terbilang } from "@/lib/terbilang";
 
 export interface WaTemplateInput {
+  nomor: string;
   nama: string;
   alamat: string;
   nominal_donasi: number | string;
-  nomor_kupon_list: string[];
+  tanggal: string;
 }
 
+const SEP = "..........................";
+
 export function buildWaMessage(input: WaTemplateInput): string {
-  const eventName = process.env.NEXT_PUBLIC_EVENT_NAME ?? "Kegiatan Donasi";
-  const eventDate = process.env.NEXT_PUBLIC_EVENT_DATE ?? "(tanggal event)";
-  const eventLocation = process.env.NEXT_PUBLIC_EVENT_LOCATION ?? "(lokasi event)";
-  const adminPhone = process.env.NEXT_PUBLIC_ADMIN_PHONE ?? "(nomor panitia)";
+  const kegiatan = process.env.NEXT_PUBLIC_EVENT_NAME ?? "HUT Kwan Ping";
+  const nominal = Number(String(input.nominal_donasi ?? "").replace(/[^\d]/g, "")) || 0;
+  const kata = terbilang(nominal);
+  const nominalText = kata
+    ? `${formatRupiah(nominal)} (${kata.charAt(0).toUpperCase()}${kata.slice(1)} rupiah)`
+    : formatRupiah(nominal);
 
-  const listKupon = input.nomor_kupon_list.map((k) => `• ${k}`).join("\n");
+  return `*TANDA TERIMA*
 
-  return `Assalamu'alaikum / Salam sejahtera Bapak/Ibu *${input.nama}*,
+Nomor : ${input.nomor}
+${SEP}
 
-Terima kasih telah memberikan sumbangsih untuk kegiatan
-*${eventName}*.
+Telah diterima : ${nominalText}
+${SEP}
 
-📋 *Detail Donasi Anda:*
-• Nama: ${input.nama}
-• Alamat: ${input.alamat}
-• Total Donasi: ${formatRupiah(input.nominal_donasi)}
+Untuk kegiatan : ${kegiatan}
+${SEP}
 
-🎫 *Kupon Bingkisan (${input.nomor_kupon_list.length} kupon):*
-${listKupon}
+Dari : ${input.nama}
+${SEP}
 
-Kupon dapat ditukar dengan paket bingkisan pada
-${eventDate} di ${eventLocation}.
+Alamat : ${input.alamat}
+${SEP}
 
-Untuk pertanyaan, hubungi panitia di ${adminPhone}.
+Tanggal : ${input.tanggal}
+${SEP}
 
-Hormat kami,
-Panitia ${eventName}`;
+Terima kasih.`;
+}
+
+const BULAN = [
+  "Januari", "Februari", "Maret", "April", "Mei", "Juni",
+  "Juli", "Agustus", "September", "Oktober", "November", "Desember",
+];
+
+/** Format tanggal Indonesia, mis. "30 Juni 2026". Default ke hari ini bila kosong. */
+export function formatTanggalIndo(iso: string | null | undefined): string {
+  const d = iso ? new Date(iso) : new Date();
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getDate()} ${BULAN[d.getMonth()]} ${d.getFullYear()}`;
+}
+
+/** Format nomor tanda terima, mis. 123 -> "0123/TT/2026". */
+export function formatNomorTT(n: number | null | undefined, iso?: string | null): string {
+  if (!n || n <= 0) return "-";
+  const year = (iso ? new Date(iso) : new Date()).getFullYear();
+  return `${String(n).padStart(4, "0")}/TT/${year}`;
 }
 
 export function normalizeWaNumber(raw: string): string | null {
