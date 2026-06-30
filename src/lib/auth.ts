@@ -21,3 +21,12 @@ export async function requireProfile(allowed?: Role[]): Promise<Profile> {
   if (allowed && !allowed.includes(profile.role)) redirect("/dashboard");
   return profile;
 }
+
+/** Admin selalu boleh; petugas mengikuti flag izin per-user. */
+export function canEditPeserta(p: Profile): boolean {
+  return p.role === "admin" || p.can_edit_peserta === true;
+}
+
+export function canDeletePeserta(p: Profile): boolean {
+  return p.role === "admin" || p.can_delete_peserta === true;
+}

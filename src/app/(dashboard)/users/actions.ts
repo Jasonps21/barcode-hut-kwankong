@@ -65,6 +65,19 @@ export async function deleteUserAction(formData: FormData): Promise<void> {
   revalidatePath("/users");
 }
 
+export async function setUserPermissionAction(formData: FormData): Promise<void> {
+  await requireProfile(["admin"]);
+  const userId = String(formData.get("user_id") ?? "");
+  const perm = String(formData.get("perm") ?? "");
+  const value = String(formData.get("value") ?? "") === "true";
+  if (!userId || (perm !== "edit" && perm !== "delete")) return;
+
+  const col = perm === "edit" ? "can_edit_peserta" : "can_delete_peserta";
+  const admin = createAdminClient();
+  await admin.from("profiles").update({ [col]: value }).eq("id", userId);
+  revalidatePath("/users");
+}
+
 export async function updateUserRoleAction(formData: FormData): Promise<void> {
   await requireProfile(["admin"]);
   const userId = String(formData.get("user_id") ?? "");

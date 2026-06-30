@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { ChevronLeft, ChevronRight, ExternalLink, FileCheck2, Pencil, Search, Send, Trash2 } from "lucide-react";
-import { requireProfile } from "@/lib/auth";
+import { requireProfile, canEditPeserta, canDeletePeserta } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { getBuktiSignedUrl } from "@/lib/bukti";
@@ -43,6 +43,8 @@ export default async function PesertaPage(props: {
   searchParams: Promise<{ kelompok?: string; q?: string; per?: string; page?: string }>;
 }) {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
+  const allowEdit = canEditPeserta(profile);
+  const allowDelete = canDeletePeserta(profile);
   const sp = await props.searchParams;
   const supabase = await createClient();
 
@@ -257,24 +259,28 @@ export default async function PesertaPage(props: {
                             <ExternalLink /> WA Manual
                           </a>
                         )}
-                        <Link
-                          href={`/peserta/${p.id}/edit`}
-                          className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent [&_svg]:size-3.5"
-                        >
-                          <Pencil /> Edit
-                        </Link>
-                        <form action={deletePesertaAction}>
-                          <input type="hidden" name="peserta_id" value={p.id} />
-                          <ConfirmButton
-                            type="submit"
-                            variant="outline"
-                            size="sm"
-                            message={`Hapus peserta "${p.nama}"? Kupon yang ter-assign akan kembali tersedia. Tindakan ini tidak bisa dibatalkan.`}
-                            className="text-destructive hover:bg-destructive/10"
+                        {allowEdit && (
+                          <Link
+                            href={`/peserta/${p.id}/edit`}
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent [&_svg]:size-3.5"
                           >
-                            <Trash2 /> Hapus
-                          </ConfirmButton>
-                        </form>
+                            <Pencil /> Edit
+                          </Link>
+                        )}
+                        {allowDelete && (
+                          <form action={deletePesertaAction}>
+                            <input type="hidden" name="peserta_id" value={p.id} />
+                            <ConfirmButton
+                              type="submit"
+                              variant="outline"
+                              size="sm"
+                              message={`Hapus peserta "${p.nama}"? Kupon yang ter-assign akan kembali tersedia. Tindakan ini tidak bisa dibatalkan.`}
+                              className="text-destructive hover:bg-destructive/10"
+                            >
+                              <Trash2 /> Hapus
+                            </ConfirmButton>
+                          </form>
+                        )}
                       </div>
                     </TableCell>
                   </TableRow>

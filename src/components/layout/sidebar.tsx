@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Users, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog,
+  LayoutDashboard, Users, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog, MessageSquare, ClipboardList,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types/database";
@@ -16,7 +16,9 @@ const NAV: NavItem[] = [
   { href: "/peserta", label: "Peserta", icon: Users, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/peserta/tambah", label: "Tambah Peserta", icon: UserPlus, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/scan-pendaftaran", label: "Scan Pendaftaran", icon: ScanLine, roles: ["admin", "petugas_pendaftaran"] },
+  { href: "/laporan-saya", label: "Laporan Saya", icon: ClipboardList, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/scan-penukaran", label: "Scan Penukaran", icon: ScanBarcode, roles: ["admin", "petugas_distribusi"] },
+  { href: "/wa-log", label: "Log WhatsApp", icon: MessageSquare, roles: ["admin"] },
   { href: "/laporan", label: "Laporan", icon: FileBarChart, roles: ["admin"] },
   { href: "/users", label: "Pengguna", icon: UserCog, roles: ["admin"] },
 ];

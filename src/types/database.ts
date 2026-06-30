@@ -18,6 +18,8 @@ export interface Profile {
   nama: string;
   role: Role;
   kelompok_id: string | null;
+  can_edit_peserta: boolean;
+  can_delete_peserta: boolean;
   created_at: string;
 }
 
@@ -39,6 +41,15 @@ export interface Peserta {
   wa_attempt_count: number;
   created_at: string;
   created_by: string | null;
+}
+
+export interface WaLog {
+  id: string;
+  peserta_id: string | null;
+  status: "sent" | "failed";
+  fonnte_response: unknown;
+  error_message: string | null;
+  sent_at: string;
 }
 
 export interface Kupon {

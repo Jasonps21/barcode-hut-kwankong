@@ -14,8 +14,11 @@ interface Row {
   range_start: number; range_end: number; padding: number;
 }
 
-export default async function KelompokPage() {
+export default async function KelompokPage(props: {
+  searchParams: Promise<{ error?: string; deleted?: string }>;
+}) {
   await requireProfile(["admin"]);
+  const sp = await props.searchParams;
   const supabase = await createClient();
   const { data } = await supabase
     .from("kelompok")
@@ -44,6 +47,13 @@ export default async function KelompokPage() {
         <h1 className="text-3xl font-bold tracking-tight">Kelompok</h1>
         <p className="text-sm text-muted-foreground">Kelola kelompok dan generate master kupon.</p>
       </div>
+
+      {sp.error && (
+        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{sp.error}</div>
+      )}
+      {sp.deleted && (
+        <div className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">Kelompok berhasil dihapus.</div>
+      )}
 
       <Card>
         <CardHeader>
@@ -83,7 +93,11 @@ export default async function KelompokPage() {
                 const c = countMap.get(k.id);
                 const start = String(k.range_start).padStart(k.padding, "0");
                 const end = String(k.range_end).padStart(k.padding, "0");
-                const isEmpty = (c?.total ?? 0) === 0 && (c?.peserta ?? 0) === 0;
+                // Boleh dihapus selama belum dipakai: tak ada peserta & tak ada
+                // kupon yang sudah di-assign/ditukar. Kupon "available" yang belum
+                // terpakai akan ikut terhapus.
+                const inUse = (c?.peserta ?? 0) + (c?.assigned ?? 0) + (c?.redeemed ?? 0);
+                const canDelete = inUse === 0;
                 return (
                   <TableRow key={k.id}>
                     <TableCell className="font-medium">{k.nama}</TableCell>
@@ -100,19 +114,26 @@ export default async function KelompokPage() {
                         >
                           <Pencil /> Edit
                         </Link>
-                        {isEmpty && (
+                        {canDelete ? (
                           <form action={deleteKelompokAction}>
                             <input type="hidden" name="kelompok_id" value={k.id} />
                             <ConfirmButton
                               type="submit"
                               variant="outline"
                               size="sm"
-                              message={`Hapus kelompok "${k.nama}"?`}
+                              message={`Hapus kelompok "${k.nama}" beserta ${c?.total ?? 0} kupon master yang belum terpakai? Tindakan ini tidak bisa dibatalkan.`}
                               className="text-destructive hover:bg-destructive/10"
                             >
                               <Trash2 /> Hapus
                             </ConfirmButton>
                           </form>
+                        ) : (
+                          <span
+                            title="Tidak bisa dihapus: sudah ada peserta atau kupon yang dipakai/ditukar."
+                            className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-muted-foreground opacity-60 [&_svg]:size-3.5"
+                          >
+                            <Trash2 /> Terpakai
+                          </span>
                         )}
                       </div>
                     </TableCell>

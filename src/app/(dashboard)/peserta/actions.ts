@@ -2,7 +2,7 @@
 
 import { after } from "next/server";
 import { revalidatePath } from "next/cache";
-import { requireProfile } from "@/lib/auth";
+import { requireProfile, canEditPeserta, canDeletePeserta } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { sendPesertaWa } from "@/lib/fonnte";
 import { hanziToPinyin } from "@/lib/pinyin";
@@ -197,6 +197,7 @@ export async function updatePesertaAction(
   formData: FormData,
 ): Promise<UpdatePesertaState> {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
+  if (!canEditPeserta(profile)) return { error: "Anda tidak memiliki izin untuk mengubah data peserta." };
 
   const id = String(formData.get("peserta_id") ?? "").trim();
   const nama = String(formData.get("nama") ?? "").trim();
@@ -250,6 +251,7 @@ export async function updatePesertaAction(
 
 export async function deletePesertaAction(formData: FormData): Promise<void> {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
+  if (!canDeletePeserta(profile)) return;
   const id = String(formData.get("peserta_id") ?? "").trim();
   if (!id) return;
 
@@ -281,6 +283,7 @@ export async function deletePesertaAction(formData: FormData): Promise<void> {
 
 export async function assignKuponAction(formData: FormData): Promise<void> {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
+  if (!canEditPeserta(profile)) return;
   const pesertaId = String(formData.get("peserta_id") ?? "").trim();
   const nomor = String(formData.get("nomor_kupon") ?? "").trim().toUpperCase();
   if (!pesertaId || !nomor) return;
@@ -311,6 +314,7 @@ export async function assignKuponAction(formData: FormData): Promise<void> {
 
 export async function unassignKuponAction(formData: FormData): Promise<void> {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
+  if (!canEditPeserta(profile)) return;
   const pesertaId = String(formData.get("peserta_id") ?? "").trim();
   const kuponId = String(formData.get("kupon_id") ?? "").trim();
   if (!pesertaId || !kuponId) return;

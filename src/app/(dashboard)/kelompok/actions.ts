@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { buildNomorKupon, parseRangeFields, rangesOverlap } from "@/lib/range-parser";
@@ -186,6 +187,11 @@ export async function updateKelompokAction(
   };
 }
 
+function backWith(params: Record<string, string>): never {
+  const qs = new URLSearchParams(params).toString();
+  redirect(`/kelompok?${qs}`);
+}
+
 export async function deleteKelompokAction(formData: FormData): Promise<void> {
   await requireProfile(["admin"]);
   const id = String(formData.get("kelompok_id") ?? "").trim();
@@ -193,13 +199,35 @@ export async function deleteKelompokAction(formData: FormData): Promise<void> {
 
   const admin = createAdminClient();
 
-  // Jangan hapus kalau masih ada peserta atau kupon di kelompok ini.
-  const [{ count: pesertaCount }, { count: kuponCount }] = await Promise.all([
+  // Jangan hapus kalau sudah ada peserta atau kupon yang dipakai/ditukar.
+  // Kupon "available" yang belum terpakai boleh ikut terhapus.
+  const [{ count: pesertaCount }, { count: usedKuponCount }, { data: petugas }] = await Promise.all([
     admin.from("peserta").select("id", { count: "exact", head: true }).eq("kelompok_id", id),
-    admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", id),
+    admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", id).neq("status", "available"),
+    admin.from("profiles").select("nama").eq("kelompok_id", id),
   ]);
-  if ((pesertaCount ?? 0) > 0 || (kuponCount ?? 0) > 0) return; // diblok di UI dgn pesan
+  if ((pesertaCount ?? 0) > 0 || (usedKuponCount ?? 0) > 0) {
+    backWith({ error: "Kelompok tidak bisa dihapus karena sudah ada peserta atau kupon yang dipakai/ditukar." });
+  }
 
-  await admin.from("kelompok").delete().eq("id", id);
+  // Petugas yang masih di-assign ke kelompok ini akan memblokir penghapusan (FK).
+  const petugasList = (petugas ?? []) as Array<{ nama: string }>;
+  if (petugasList.length > 0) {
+    const nama = petugasList.map((p) => p.nama).join(", ");
+    backWith({
+      error: `Kelompok masih dipakai oleh petugas: ${nama}. Pindahkan/ubah kelompok petugas tersebut di menu Pengguna lebih dulu.`,
+    });
+  }
+
+  // Hapus kupon master yang belum terpakai lebih dulu (hindari kendala FK).
+  const { error: kErr } = await admin.from("kupon").delete().eq("kelompok_id", id).eq("status", "available");
+  if (kErr) backWith({ error: `Gagal hapus kupon kelompok: ${kErr.message}` });
+
+  const { error: dErr } = await admin.from("kelompok").delete().eq("id", id);
+  if (dErr) backWith({ error: `Gagal hapus kelompok: ${dErr.message}` });
+
   revalidatePath("/kelompok");
+  revalidatePath("/peserta");
+  revalidatePath("/laporan");
+  backWith({ deleted: "1" });
 }

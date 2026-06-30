@@ -1,7 +1,7 @@
 import Link from "next/link";
-import { notFound } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
 import { ArrowLeft, Plus, Ticket, X } from "lucide-react";
-import { requireProfile } from "@/lib/auth";
+import { requireProfile, canEditPeserta } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { assignKuponAction, unassignKuponAction } from "../../actions";
 
 export default async function EditPesertaPage(props: { params: Promise<{ id: string }> }) {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
+  if (!canEditPeserta(profile)) redirect("/peserta");
   const { id } = await props.params;
   const admin = createAdminClient();
 
