@@ -4,6 +4,9 @@ import { requireProfile } from "@/lib/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScanPendaftaranClient } from "./register-client";
 
+// Beri ruang waktu untuk pengiriman WA via `after()` di serverless.
+export const maxDuration = 60;
+
 export default async function ScanPendaftaranPage() {
   await requireProfile(["admin", "petugas_pendaftaran"]);
 

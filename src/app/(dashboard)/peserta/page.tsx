@@ -15,6 +15,9 @@ import { formatRupiah } from "@/lib/utils";
 import { buildWaMessage, normalizeWaNumber, formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import { resendWaAction, deletePesertaAction } from "./actions";
 
+// Beri ruang waktu untuk pengiriman WA (Kirim Ulang) via `after()` di serverless.
+export const maxDuration = 60;
+
 interface PesertaRow {
   id: string; nama: string; nama_hanzi: string | null; pinyin: string | null;
   alamat: string;

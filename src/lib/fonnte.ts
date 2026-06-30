@@ -3,8 +3,10 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { buildWaMessage, normalizeWaNumber, type WaTemplateInput } from "@/lib/wa-template";
 
 const FONNTE_URL = process.env.FONNTE_API_URL ?? "https://api.fonnte.com/send";
-const MAX_ATTEMPTS = 3;
-const RETRY_DELAY_MS = 100_000; // ~5 menit total dengan 3 percobaan
+const MAX_ATTEMPTS = 2;
+// Serverless (Vercel) membatasi durasi fungsi (Hobby ~10 dtk). Retry harus
+// singkat agar task `after()` tidak terbunuh sebelum selesai.
+const RETRY_DELAY_MS = 3_000;
 
 function sleep(ms: number) {
   return new Promise((res) => setTimeout(res, ms));
@@ -24,7 +26,13 @@ async function callFonnte(target: string, message: string) {
 
   let body: unknown;
   try { body = await res.json(); } catch { body = { error: "non-json response" }; }
-  return { ok: res.ok, status: res.status, body };
+
+  // Fonnte balas HTTP 200 dengan status:false untuk kegagalan logis
+  // (mis. "invalid token", nomor tidak valid). Jadi cek field status juga.
+  const b = body as { status?: boolean; reason?: string; detail?: string } | null;
+  const fonnteOk = res.ok && b?.status !== false;
+  const reason = b?.reason ?? b?.detail ?? `HTTP ${res.status}`;
+  return { ok: fonnteOk, status: res.status, body, reason };
 }
 
 export async function sendPesertaWa(opts: {
@@ -57,7 +65,7 @@ export async function sendPesertaWa(opts: {
       peserta_id: opts.pesertaId,
       status: result.ok ? "sent" : "failed",
       fonnte_response: result.body as object,
-      error_message: result.ok ? null : `HTTP ${result.status}`,
+      error_message: result.ok ? null : result.reason,
     });
 
     if (result.ok) {
