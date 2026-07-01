@@ -1,6 +1,12 @@
 import "server-only";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { buildWaMessage, normalizeWaNumber, type WaTemplateInput } from "@/lib/wa-template";
+import {
+  buildWaMessage,
+  normalizeWaNumber,
+  formatNomorTT,
+  formatTanggalIndo,
+  type WaTemplateInput,
+} from "@/lib/wa-template";
 
 const FONNTE_URL = process.env.FONNTE_API_URL ?? "https://api.fonnte.com/send";
 const MAX_ATTEMPTS = 2;
@@ -84,4 +90,65 @@ export async function sendPesertaWa(opts: {
     wa_status: "failed",
     wa_attempt_count: MAX_ATTEMPTS,
   }).eq("id", opts.pesertaId);
+}
+
+interface PendingPeserta {
+  id: string;
+  nama: string;
+  alamat: string;
+  no_whatsapp: string;
+  nominal_donasi: number | string;
+  nomor_tt: number | null;
+  registered_at: string | null;
+}
+
+/**
+ * Proses antrean WA: kirim tanda terima untuk semua peserta ber-status
+ * `pending` yang sudah terdaftar. Dipanggil oleh cron, BUKAN oleh request
+ * pendaftaran — supaya request tidak tertahan menunggu Fonnte.
+ */
+export async function processPendingWa(limit = 30): Promise<{ processed: number }> {
+  const admin = createAdminClient();
+
+  const { data } = await admin
+    .from("peserta")
+    .select("id, nama, alamat, no_whatsapp, nominal_donasi, nomor_tt, registered_at")
+    .eq("wa_status", "pending")
+    .not("registered_at", "is", null)
+    .order("registered_at", { ascending: true })
+    .limit(limit);
+
+  const rows = (data ?? []) as PendingPeserta[];
+  let processed = 0;
+
+  for (const p of rows) {
+    // Pastikan nomor tanda terima sudah ada.
+    let nomorTT = p.nomor_tt;
+    if (!nomorTT) {
+      const { data: n } = await admin.rpc("assign_nomor_tt", { p_id: p.id });
+      const num = Number(n);
+      nomorTT = Number.isFinite(num) && num > 0 ? num : null;
+    }
+
+    const { count } = await admin
+      .from("kupon")
+      .select("id", { count: "exact", head: true })
+      .eq("peserta_id", p.id);
+
+    await sendPesertaWa({
+      pesertaId: p.id,
+      noWhatsapp: p.no_whatsapp,
+      template: {
+        nomor: formatNomorTT(nomorTT, p.registered_at),
+        nama: p.nama,
+        alamat: p.alamat,
+        nominal_donasi: p.nominal_donasi,
+        tanggal: formatTanggalIndo(p.registered_at),
+        total_kupon: count ?? 0,
+      },
+    });
+    processed++;
+  }
+
+  return { processed };
 }

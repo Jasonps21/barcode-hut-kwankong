@@ -1,13 +1,10 @@
 "use server";
 
-import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile, canEditPeserta, canDeletePeserta } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendPesertaWa } from "@/lib/fonnte";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { uploadBukti } from "@/lib/bukti";
-import { formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 
 /** Assign nomor tanda terima sekuensial (atomic via RPC). Return nomor mentah. */
 async function assignNomorTT(admin: ReturnType<typeof createAdminClient>, pesertaId: string): Promise<number | null> {
@@ -159,19 +156,10 @@ export async function createPesertaAction(
     detail: { nama, kupons: kuponList, nominal_donasi, tanpa_kupon: tanpaKupon },
   });
 
-  const nomorTT = await assignNomorTT(admin, pesertaId);
-  after(async () => {
-    await sendPesertaWa({
-      pesertaId,
-      noWhatsapp: no_whatsapp,
-      template: {
-        nomor: formatNomorTT(nomorTT, registeredAt),
-        nama, alamat, nominal_donasi,
-        tanggal: formatTanggalIndo(registeredAt),
-        total_kupon: kupons.length,
-      },
-    });
-  });
+  // Assign nomor tanda terima sekarang (cepat). Pengiriman WA dilakukan oleh
+  // cron `/api/cron/send-wa` berdasarkan wa_status = "pending" — request tidak
+  // perlu menunggu Fonnte.
+  await assignNomorTT(admin, pesertaId);
 
   revalidatePath("/peserta");
   revalidatePath("/dashboard");
@@ -190,38 +178,17 @@ export async function resendWaAction(formData: FormData): Promise<void> {
   const admin = createAdminClient();
   const { data: peserta } = await admin
     .from("peserta")
-    .select("id, nama, alamat, no_whatsapp, nominal_donasi, kelompok_id, nomor_tt, registered_at")
+    .select("id, kelompok_id, nomor_tt")
     .eq("id", pesertaId)
     .single();
   if (!peserta) return;
-  const p = peserta as {
-    id: string; nama: string; alamat: string; no_whatsapp: string;
-    nominal_donasi: number | string; kelompok_id: string;
-    nomor_tt: number | null; registered_at: string | null;
-  };
+  const p = peserta as { id: string; kelompok_id: string; nomor_tt: number | null };
 
   if (profile.role !== "admin" && p.kelompok_id !== profile.kelompok_id) return;
 
-  const { count: totalKupon } = await admin
-    .from("kupon")
-    .select("id", { count: "exact", head: true })
-    .eq("peserta_id", pesertaId);
-
+  // Pastikan nomor tanda terima ada, lalu tandai pending — cron yang mengirim.
+  if (!p.nomor_tt) await assignNomorTT(admin, pesertaId);
   await admin.from("peserta").update({ wa_status: "pending" }).eq("id", pesertaId);
-
-  const nomorTT = p.nomor_tt ?? (await assignNomorTT(admin, pesertaId));
-  after(async () => {
-    await sendPesertaWa({
-      pesertaId,
-      noWhatsapp: p.no_whatsapp,
-      template: {
-        nomor: formatNomorTT(nomorTT, p.registered_at),
-        nama: p.nama, alamat: p.alamat, nominal_donasi: p.nominal_donasi,
-        tanggal: formatTanggalIndo(p.registered_at),
-        total_kupon: totalKupon ?? 0,
-      },
-    });
-  });
 
   revalidatePath("/peserta");
 }
