@@ -40,43 +40,68 @@ export async function createPesertaAction(
   const nominal_donasi = Number(nominalRaw.replace(/\D/g, ""));
   const metode_bayar = String(formData.get("metode_bayar") ?? "").trim();
   const buktiFile = formData.get("bukti") as File | null;
-  const kuponList = formData.getAll("kupon").map((v) => String(v).trim()).filter(Boolean);
+  const tanpaKupon = formData.get("tanpa_kupon") != null;
+  const kelompokManual = String(formData.get("kelompok_id") ?? "").trim();
+  const kuponList = tanpaKupon
+    ? []
+    : formData.getAll("kupon").map((v) => String(v).trim()).filter(Boolean);
 
   if (!nama) return { error: "Nama wajib diisi." };
   if (!alamat) return { error: "Alamat wajib diisi." };
   if (!no_whatsapp) return { error: "Nomor WhatsApp wajib diisi." };
   if (!Number.isFinite(nominal_donasi) || nominal_donasi <= 0) return { error: "Nominal donasi tidak valid." };
   if (metode_bayar !== "cash" && metode_bayar !== "transfer") return { error: "Metode bayar wajib dipilih (cash/transfer)." };
-  if (kuponList.length === 0) return { error: "Minimal 1 kupon harus di-scan/input." };
-  if (new Set(kuponList).size !== kuponList.length) return { error: "Ada nomor kupon duplikat." };
+  if (metode_bayar === "transfer" && !(buktiFile && buktiFile.size > 0)) {
+    return { error: "Bukti transfer wajib diupload — foto belum diupload." };
+  }
+  if (!tanpaKupon) {
+    if (kuponList.length === 0) return { error: "Minimal 1 kupon harus di-scan/input, atau centang \"Tidak mengambil kupon\"." };
+    if (new Set(kuponList).size !== kuponList.length) return { error: "Ada nomor kupon duplikat." };
+  }
 
   const admin = createAdminClient();
   const registeredAt = new Date().toISOString();
 
-  const { data: kuponData, error: kErr } = await admin
-    .from("kupon")
-    .select("id, nomor_kupon, status, kelompok_id")
-    .in("nomor_kupon", kuponList);
-  if (kErr) return { error: `Gagal cek kupon: ${kErr.message}` };
+  let kelompokId: string;
+  let kupons: KuponRow[] = [];
 
-  const kupons = (kuponData ?? []) as KuponRow[];
-  const found = new Set(kupons.map((k) => k.nomor_kupon));
-  const missing = kuponList.filter((k) => !found.has(k));
-  if (missing.length) return { error: `Kupon tidak terdaftar: ${missing.join(", ")}.` };
+  if (tanpaKupon) {
+    // Tanpa kupon: kelompok tidak bisa ditentukan dari kupon.
+    if (profile.role === "admin") {
+      if (!kelompokManual) return { error: "Kelompok wajib dipilih saat tidak mengambil kupon." };
+      const { data: kel } = await admin.from("kelompok").select("id").eq("id", kelompokManual).single();
+      if (!kel) return { error: "Kelompok tidak ditemukan." };
+      kelompokId = kelompokManual;
+    } else {
+      if (!profile.kelompok_id) return { error: "Akun Anda belum terhubung ke kelompok." };
+      kelompokId = profile.kelompok_id;
+    }
+  } else {
+    const { data: kuponData, error: kErr } = await admin
+      .from("kupon")
+      .select("id, nomor_kupon, status, kelompok_id")
+      .in("nomor_kupon", kuponList);
+    if (kErr) return { error: `Gagal cek kupon: ${kErr.message}` };
 
-  const distinctKelompok = [...new Set(kupons.map((k) => k.kelompok_id))];
-  if (distinctKelompok.length > 1) {
-    return { error: "Kupon yang dipilih berasal dari kelompok berbeda. Semua kupon harus dari kelompok yang sama." };
-  }
-  const kelompokId = distinctKelompok[0];
+    kupons = (kuponData ?? []) as KuponRow[];
+    const found = new Set(kupons.map((k) => k.nomor_kupon));
+    const missing = kuponList.filter((k) => !found.has(k));
+    if (missing.length) return { error: `Kupon tidak terdaftar: ${missing.join(", ")}.` };
 
-  if (profile.role !== "admin" && kelompokId !== profile.kelompok_id) {
-    return { error: "Kupon bukan milik kelompok Anda." };
-  }
+    const distinctKelompok = [...new Set(kupons.map((k) => k.kelompok_id))];
+    if (distinctKelompok.length > 1) {
+      return { error: "Kupon yang dipilih berasal dari kelompok berbeda. Semua kupon harus dari kelompok yang sama." };
+    }
+    kelompokId = distinctKelompok[0];
 
-  const taken = kupons.filter((k) => k.status !== "available");
-  if (taken.length) {
-    return { error: `Kupon sudah dipakai/ditukar: ${taken.map((k) => k.nomor_kupon).join(", ")}.` };
+    if (profile.role !== "admin" && kelompokId !== profile.kelompok_id) {
+      return { error: "Kupon bukan milik kelompok Anda." };
+    }
+
+    const taken = kupons.filter((k) => k.status !== "available");
+    if (taken.length) {
+      return { error: `Kupon sudah dipakai/ditukar: ${taken.map((k) => k.nomor_kupon).join(", ")}.` };
+    }
   }
 
   const { data: pesertaData, error: pErr } = await admin
@@ -109,19 +134,21 @@ export async function createPesertaAction(
     }
   }
 
-  const { error: assignErr } = await admin
-    .from("kupon")
-    .update({
-      status: "assigned",
-      peserta_id: pesertaId,
-      assigned_at: new Date().toISOString(),
-      assigned_by: profile.id,
-    })
-    .in("id", kupons.map((k) => k.id));
+  if (kupons.length) {
+    const { error: assignErr } = await admin
+      .from("kupon")
+      .update({
+        status: "assigned",
+        peserta_id: pesertaId,
+        assigned_at: new Date().toISOString(),
+        assigned_by: profile.id,
+      })
+      .in("id", kupons.map((k) => k.id));
 
-  if (assignErr) {
-    await admin.from("peserta").delete().eq("id", pesertaId);
-    return { error: `Gagal assign kupon: ${assignErr.message}` };
+    if (assignErr) {
+      await admin.from("peserta").delete().eq("id", pesertaId);
+      return { error: `Gagal assign kupon: ${assignErr.message}` };
+    }
   }
 
   await admin.from("log_aktivitas").insert({
@@ -129,7 +156,7 @@ export async function createPesertaAction(
     aksi: "create_peserta",
     tabel_terkait: "peserta",
     record_id: pesertaId,
-    detail: { nama, kupons: kuponList, nominal_donasi },
+    detail: { nama, kupons: kuponList, nominal_donasi, tanpa_kupon: tanpaKupon },
   });
 
   const nomorTT = await assignNomorTT(admin, pesertaId);
@@ -141,13 +168,18 @@ export async function createPesertaAction(
         nomor: formatNomorTT(nomorTT, registeredAt),
         nama, alamat, nominal_donasi,
         tanggal: formatTanggalIndo(registeredAt),
+        total_kupon: kupons.length,
       },
     });
   });
 
   revalidatePath("/peserta");
   revalidatePath("/dashboard");
-  return { success: `Peserta "${nama}" tersimpan dengan ${kuponList.length} kupon. WA dikirim di latar belakang.` };
+  return {
+    success: tanpaKupon
+      ? `Peserta "${nama}" tersimpan tanpa kupon. WA dikirim di latar belakang.`
+      : `Peserta "${nama}" tersimpan dengan ${kuponList.length} kupon. WA dikirim di latar belakang.`,
+  };
 }
 
 export async function resendWaAction(formData: FormData): Promise<void> {
@@ -170,6 +202,11 @@ export async function resendWaAction(formData: FormData): Promise<void> {
 
   if (profile.role !== "admin" && p.kelompok_id !== profile.kelompok_id) return;
 
+  const { count: totalKupon } = await admin
+    .from("kupon")
+    .select("id", { count: "exact", head: true })
+    .eq("peserta_id", pesertaId);
+
   await admin.from("peserta").update({ wa_status: "pending" }).eq("id", pesertaId);
 
   const nomorTT = p.nomor_tt ?? (await assignNomorTT(admin, pesertaId));
@@ -181,6 +218,7 @@ export async function resendWaAction(formData: FormData): Promise<void> {
         nomor: formatNomorTT(nomorTT, p.registered_at),
         nama: p.nama, alamat: p.alamat, nominal_donasi: p.nominal_donasi,
         tanggal: formatTanggalIndo(p.registered_at),
+        total_kupon: totalKupon ?? 0,
       },
     });
   });

@@ -11,7 +11,13 @@ import { QrScanner } from "@/components/scanner/qr-scanner";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { createPesertaAction, type CreatePesertaState } from "../actions";
 
-export function PesertaForm() {
+export function PesertaForm({
+  isAdmin = false,
+  kelompokOptions = [],
+}: {
+  isAdmin?: boolean;
+  kelompokOptions?: { id: string; nama: string }[];
+}) {
   const [state, action, pending] = useActionState<CreatePesertaState, FormData>(
     createPesertaAction,
     undefined,
@@ -21,7 +27,17 @@ export function PesertaForm() {
   const [manual, setManual] = useState("");
   const [namaHanzi, setNamaHanzi] = useState("");
   const [metode, setMetode] = useState("");
+  const [tanpaKupon, setTanpaKupon] = useState(false);
   const pinyinPreview = useMemo(() => hanziToPinyin(namaHanzi), [namaHanzi]);
+
+  function toggleTanpaKupon(checked: boolean) {
+    setTanpaKupon(checked);
+    if (checked) {
+      setKupons([]);
+      setScanOn(false);
+      setManual("");
+    }
+  }
 
   function addKupon(raw: string) {
     const v = raw.trim().toUpperCase();
@@ -82,9 +98,9 @@ export function PesertaForm() {
         </div>
         {metode === "transfer" && (
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="bukti">Bukti Transfer (opsional)</Label>
-            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" />
-            <p className="text-xs text-muted-foreground">Foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
+            <Label htmlFor="bukti">Bukti Transfer (wajib)</Label>
+            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" required />
+            <p className="text-xs text-muted-foreground">Wajib foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
           </div>
         )}
       </div>
@@ -93,38 +109,84 @@ export function PesertaForm() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <Label>Kupon</Label>
-            <p className="text-xs text-muted-foreground">{kupons.length} kupon di-scan. Kelompok ditentukan otomatis dari kupon.</p>
+            <p className="text-xs text-muted-foreground">
+              {tanpaKupon
+                ? "Peserta tidak mengambil kupon."
+                : `${kupons.length} kupon di-scan. Kelompok ditentukan otomatis dari kupon.`}
+            </p>
           </div>
-          <Button type="button" variant={scanOn ? "destructive" : "secondary"} size="sm" onClick={() => setScanOn((v) => !v)}>
-            {scanOn ? <><CameraOff /> Tutup Scanner</> : <><Camera /> Buka Scanner QR</>}
-          </Button>
+          {!tanpaKupon && (
+            <Button type="button" variant={scanOn ? "destructive" : "secondary"} size="sm" onClick={() => setScanOn((v) => !v)}>
+              {scanOn ? <><CameraOff /> Tutup Scanner</> : <><Camera /> Buka Scanner QR</>}
+            </Button>
+          )}
         </div>
-        {scanOn && <QrScanner onDetect={addKupon} active={scanOn} />}
-        <div className="flex gap-2">
-          <Input
-            placeholder="Atau ketik manual: 2026A0001"
-            value={manual}
-            onChange={(e) => setManual(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") { e.preventDefault(); addKupon(manual); setManual(""); }
-            }}
+
+        <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+          <input
+            type="checkbox"
+            name="tanpa_kupon"
+            checked={tanpaKupon}
+            onChange={(e) => toggleTanpaKupon(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
           />
-          <Button type="button" variant="outline" onClick={() => { addKupon(manual); setManual(""); }}>
-            <Plus /> Tambah
-          </Button>
-        </div>
-        {kupons.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {kupons.map((k) => (
-              <Badge key={k} variant="secondary" className="gap-1.5 px-2 py-1 font-mono text-sm">
-                {k}
-                <button type="button" onClick={() => removeKupon(k)} className="rounded-full hover:bg-background/40" aria-label={`Hapus ${k}`}>
-                  <X className="h-3 w-3" />
-                </button>
-                <input type="hidden" name="kupon" value={k} />
-              </Badge>
-            ))}
-          </div>
+          <span>
+            <span className="font-medium">Tidak mengambil kupon</span>
+            <span className="block text-xs text-muted-foreground">
+              Centang bila peserta tidak mengambil kupon sama sekali. Simpan tanpa scan kupon.
+            </span>
+          </span>
+        </label>
+
+        {tanpaKupon ? (
+          isAdmin && (
+            <div className="space-y-2">
+              <Label htmlFor="kelompok_id">Kelompok</Label>
+              <select
+                id="kelompok_id"
+                name="kelompok_id"
+                required
+                defaultValue=""
+                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
+              >
+                <option value="" disabled>Pilih kelompok…</option>
+                {kelompokOptions.map((k) => (
+                  <option key={k.id} value={k.id}>{k.nama}</option>
+                ))}
+              </select>
+              <p className="text-xs text-muted-foreground">Tanpa kupon, kelompok tidak bisa ditentukan otomatis — pilih manual.</p>
+            </div>
+          )
+        ) : (
+          <>
+            {scanOn && <QrScanner onDetect={addKupon} active={scanOn} />}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Atau ketik manual: 2026A0001"
+                value={manual}
+                onChange={(e) => setManual(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") { e.preventDefault(); addKupon(manual); setManual(""); }
+                }}
+              />
+              <Button type="button" variant="outline" onClick={() => { addKupon(manual); setManual(""); }}>
+                <Plus /> Tambah
+              </Button>
+            </div>
+            {kupons.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {kupons.map((k) => (
+                  <Badge key={k} variant="secondary" className="gap-1.5 px-2 py-1 font-mono text-sm">
+                    {k}
+                    <button type="button" onClick={() => removeKupon(k)} className="rounded-full hover:bg-background/40" aria-label={`Hapus ${k}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                    <input type="hidden" name="kupon" value={k} />
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 

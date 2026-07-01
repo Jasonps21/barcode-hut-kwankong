@@ -90,6 +90,18 @@ export default async function PesertaPage(props: {
   const total = count ?? rows.length;
   const totalPages = showAll ? 1 : Math.max(1, Math.ceil(total / perNum));
 
+  // Hitung jumlah kupon yang ter-assign per peserta (untuk link WA manual).
+  const kuponCount = new Map<string, number>();
+  if (rows.length) {
+    const { data: kData } = await supabase
+      .from("kupon")
+      .select("peserta_id")
+      .in("peserta_id", rows.map((r) => r.id));
+    for (const k of (kData ?? []) as Array<{ peserta_id: string | null }>) {
+      if (k.peserta_id) kuponCount.set(k.peserta_id, (kuponCount.get(k.peserta_id) ?? 0) + 1);
+    }
+  }
+
 
   // Signed URL bukti transfer (bucket privat) untuk baris yang punya bukti.
   const buktiMap = new Map<string, string>();
@@ -112,6 +124,7 @@ export default async function PesertaPage(props: {
       nama: p.nama, alamat: p.alamat,
       nominal_donasi: p.nominal_donasi,
       tanggal: formatTanggalIndo(p.registered_at),
+      total_kupon: kuponCount.get(p.id) ?? 0,
     });
     return `https://wa.me/${target}?text=${encodeURIComponent(message)}`;
   }

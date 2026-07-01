@@ -1,4 +1,5 @@
 import { requireProfile } from "@/lib/auth";
+import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { PesertaForm } from "./peserta-form";
 
@@ -6,7 +7,20 @@ import { PesertaForm } from "./peserta-form";
 export const maxDuration = 60;
 
 export default async function TambahPesertaPage() {
-  await requireProfile(["admin", "petugas_pendaftaran"]);
+  const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
+  const isAdmin = profile.role === "admin";
+
+  // Untuk kasus "tidak mengambil kupon", admin perlu memilih kelompok manual
+  // (kelompok tidak bisa ditentukan otomatis tanpa kupon).
+  let kelompokOptions: { id: string; nama: string }[] = [];
+  if (isAdmin) {
+    const supabase = await createClient();
+    const { data } = await supabase
+      .from("kelompok")
+      .select("id, nama")
+      .order("nama", { ascending: true });
+    kelompokOptions = (data ?? []) as { id: string; nama: string }[];
+  }
 
   return (
     <div className="space-y-6">
@@ -20,7 +34,7 @@ export default async function TambahPesertaPage() {
           <CardDescription>Isi data lengkap, lalu scan/ketik nomor kupon (boleh lebih dari satu). Semua kupon harus dari kelompok yang sama.</CardDescription>
         </CardHeader>
         <CardContent>
-          <PesertaForm />
+          <PesertaForm isAdmin={isAdmin} kelompokOptions={kelompokOptions} />
         </CardContent>
       </Card>
     </div>

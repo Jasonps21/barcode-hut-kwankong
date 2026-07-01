@@ -7,6 +7,7 @@ export interface WaTemplateInput {
   alamat: string;
   nominal_donasi: number | string;
   tanggal: string;
+  total_kupon: number;
 }
 
 const SEP = "..........................";
@@ -34,6 +35,9 @@ Dari : ${input.nama}
 ${SEP}
 
 Alamat : ${input.alamat}
+${SEP}
+
+Total kupon diberikan : ${input.total_kupon} kupon
 ${SEP}
 
 Tanggal : ${input.tanggal}

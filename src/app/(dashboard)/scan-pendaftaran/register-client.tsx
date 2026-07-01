@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import {
-  Camera, CameraOff, CheckCircle2, Loader2, Plus, Save, Search, User, X,
+  Camera, CameraOff, CheckCircle2, Loader2, Pencil, Plus, Save, Search, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +27,8 @@ export function ScanPendaftaranClient() {
   const [scanOn, setScanOn] = useState(false);
   const [manual, setManual] = useState("");
   const [metode, setMetode] = useState("");
+  const [tanpaKupon, setTanpaKupon] = useState(false);
+  const [editHp, setEditHp] = useState(false);
 
   const [state, action, pending] = useActionState<RegisterState, FormData>(
     registerExistingPesertaAction,
@@ -53,6 +55,8 @@ export function ScanPendaftaranClient() {
       setQuery("");
       setResults([]);
       setMetode("");
+      setTanpaKupon(false);
+      setEditHp(false);
     }
   }, [state?.success]);
 
@@ -63,6 +67,14 @@ export function ScanPendaftaranClient() {
   }
   function removeKupon(v: string) {
     setKupons((prev) => prev.filter((k) => k !== v));
+  }
+  function toggleTanpaKupon(checked: boolean) {
+    setTanpaKupon(checked);
+    if (checked) {
+      setKupons([]);
+      setScanOn(false);
+      setManual("");
+    }
   }
 
   // ---- Tahap 1: cari & pilih peserta ----
@@ -105,7 +117,7 @@ export function ScanPendaftaranClient() {
             <button
               key={p.id}
               type="button"
-              onClick={() => { setSelected(p); setKupons([]); }}
+              onClick={() => { setSelected(p); setKupons([]); setTanpaKupon(false); setEditHp(false); }}
               className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-accent"
             >
               <User className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
@@ -142,16 +154,42 @@ export function ScanPendaftaranClient() {
             {selected.pinyin && <span className="text-xs italic text-muted-foreground">{selected.pinyin}</span>}
           </div>
           <p className="text-sm text-muted-foreground">{selected.alamat}</p>
-          <p className="text-sm text-muted-foreground">
-            {selected.no_whatsapp || "(tanpa no HP)"} · Kelompok {selected.kelompok_nama ?? "-"}
+          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
+            <span>{selected.no_whatsapp || "(tanpa no HP)"} · Kelompok {selected.kelompok_nama ?? "-"}</span>
+            {!editHp && (
+              <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setEditHp(true)}>
+                <Pencil className="h-3 w-3" /> Ubah No HP
+              </Button>
+            )}
           </p>
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={() => { setSelected(null); setKupons([]); }}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => { setSelected(null); setKupons([]); setTanpaKupon(false); setEditHp(false); }}>
           <X /> Ganti
         </Button>
       </div>
 
+      {!editHp && <input type="hidden" name="no_whatsapp" value={selected.no_whatsapp ?? ""} />}
+
       <div className="grid gap-4 md:grid-cols-2">
+        {editHp && (
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="no_whatsapp">No WhatsApp baru</Label>
+            <div className="flex gap-2">
+              <Input
+                key={selected.id}
+                id="no_whatsapp"
+                name="no_whatsapp"
+                inputMode="tel"
+                placeholder="08xxxxxxxxxx"
+                defaultValue={selected.no_whatsapp ?? ""}
+                required
+                autoFocus
+              />
+              <Button type="button" variant="outline" onClick={() => setEditHp(false)}>Batal</Button>
+            </div>
+            <p className="text-xs text-muted-foreground">Nomor ini dipakai untuk kirim tanda terima saat Simpan.</p>
+          </div>
+        )}
         <div className="space-y-2">
           <Label htmlFor="nominal_donasi">Nominal Donasi</Label>
           <RupiahInput id="nominal_donasi" name="nominal_donasi" placeholder="100.000" required />
@@ -165,9 +203,9 @@ export function ScanPendaftaranClient() {
         </div>
         {metode === "transfer" && (
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="bukti">Bukti Transfer (opsional)</Label>
-            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" />
-            <p className="text-xs text-muted-foreground">Foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
+            <Label htmlFor="bukti">Bukti Transfer (wajib)</Label>
+            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" required />
+            <p className="text-xs text-muted-foreground">Wajib foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
           </div>
         )}
       </div>
@@ -176,36 +214,61 @@ export function ScanPendaftaranClient() {
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div>
             <Label>Kupon</Label>
-            <p className="text-xs text-muted-foreground">{kupons.length} kupon di-scan.</p>
+            <p className="text-xs text-muted-foreground">
+              {tanpaKupon ? "Peserta tidak mengambil kupon." : `${kupons.length} kupon di-scan.`}
+            </p>
           </div>
-          <Button type="button" variant={scanOn ? "destructive" : "secondary"} size="sm" onClick={() => setScanOn((v) => !v)}>
-            {scanOn ? <><CameraOff /> Tutup Scanner</> : <><Camera /> Buka Scanner QR</>}
-          </Button>
+          {!tanpaKupon && (
+            <Button type="button" variant={scanOn ? "destructive" : "secondary"} size="sm" onClick={() => setScanOn((v) => !v)}>
+              {scanOn ? <><CameraOff /> Tutup Scanner</> : <><Camera /> Buka Scanner QR</>}
+            </Button>
+          )}
         </div>
-        {scanOn && <QrScanner active={scanOn} onDetect={addKupon} />}
-        <div className="flex gap-2">
-          <Input
-            placeholder="Atau ketik manual: 2026A0001"
-            value={manual}
-            onChange={(e) => setManual(e.target.value)}
-            onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKupon(manual); setManual(""); } }}
+
+        <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-background px-3 py-2 text-sm">
+          <input
+            type="checkbox"
+            name="tanpa_kupon"
+            checked={tanpaKupon}
+            onChange={(e) => toggleTanpaKupon(e.target.checked)}
+            className="mt-0.5 h-4 w-4"
           />
-          <Button type="button" variant="outline" onClick={() => { addKupon(manual); setManual(""); }}>
-            <Plus /> Tambah
-          </Button>
-        </div>
-        {kupons.length > 0 && (
-          <div className="flex flex-wrap gap-2">
-            {kupons.map((k) => (
-              <Badge key={k} variant="secondary" className="gap-1.5 px-2 py-1 font-mono text-sm">
-                {k}
-                <button type="button" onClick={() => removeKupon(k)} className="rounded-full hover:bg-background/40" aria-label={`Hapus ${k}`}>
-                  <X className="h-3 w-3" />
-                </button>
-                <input type="hidden" name="kupon" value={k} />
-              </Badge>
-            ))}
-          </div>
+          <span>
+            <span className="font-medium">Tidak mengambil kupon</span>
+            <span className="block text-xs text-muted-foreground">
+              Centang bila peserta tidak mengambil kupon sama sekali. Simpan tanpa scan kupon.
+            </span>
+          </span>
+        </label>
+
+        {!tanpaKupon && (
+          <>
+            {scanOn && <QrScanner active={scanOn} onDetect={addKupon} />}
+            <div className="flex gap-2">
+              <Input
+                placeholder="Atau ketik manual: 2026A0001"
+                value={manual}
+                onChange={(e) => setManual(e.target.value)}
+                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKupon(manual); setManual(""); } }}
+              />
+              <Button type="button" variant="outline" onClick={() => { addKupon(manual); setManual(""); }}>
+                <Plus /> Tambah
+              </Button>
+            </div>
+            {kupons.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {kupons.map((k) => (
+                  <Badge key={k} variant="secondary" className="gap-1.5 px-2 py-1 font-mono text-sm">
+                    {k}
+                    <button type="button" onClick={() => removeKupon(k)} className="rounded-full hover:bg-background/40" aria-label={`Hapus ${k}`}>
+                      <X className="h-3 w-3" />
+                    </button>
+                    <input type="hidden" name="kupon" value={k} />
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </>
         )}
       </div>
 
@@ -215,7 +278,7 @@ export function ScanPendaftaranClient() {
 
       <Button type="submit" disabled={pending} size="lg">
         {pending ? <Loader2 className="animate-spin" /> : <Save />}
-        {pending ? "Menyimpan..." : "Simpan & Assign Kupon"}
+        {pending ? "Menyimpan..." : tanpaKupon ? "Simpan (Tanpa Kupon)" : "Simpan & Assign Kupon"}
       </Button>
     </form>
   );
