@@ -1,9 +1,12 @@
 "use server";
 
+import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { sendPesertaWa } from "@/lib/fonnte";
 import { uploadBukti } from "@/lib/bukti";
+import { formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import type { MetodeBayar } from "@/types/database";
 
 export interface PesertaHit {
@@ -208,9 +211,22 @@ export async function registerExistingPesertaAction(
     detail: { nama: peserta.nama, kupons: kuponList, nominal_donasi, metode_bayar, tanpa_kupon: tanpaKupon },
   });
 
-  // Assign nomor tanda terima sekarang (cepat). WA dikirim oleh cron
-  // `/api/cron/send-wa` berdasarkan wa_status = "pending".
-  await admin.rpc("assign_nomor_tt", { p_id: pesertaId });
+  // Kirim WA segera (best-effort) via after(); cron `/api/cron/send-wa`
+  // menjadi penadah bila gagal/terputus (wa_status tetap "pending").
+  const { data: ntData } = await admin.rpc("assign_nomor_tt", { p_id: pesertaId });
+  const nomorTT = Number.isFinite(Number(ntData)) && Number(ntData) > 0 ? Number(ntData) : null;
+  after(async () => {
+    await sendPesertaWa({
+      pesertaId,
+      noWhatsapp: no_whatsapp,
+      template: {
+        nomor: formatNomorTT(nomorTT, registeredAt),
+        nama: peserta.nama, alamat: peserta.alamat, nominal_donasi,
+        tanggal: formatTanggalIndo(registeredAt),
+        total_kupon: kupons.length,
+      },
+    });
+  });
 
   revalidatePath("/peserta");
   revalidatePath("/dashboard");
