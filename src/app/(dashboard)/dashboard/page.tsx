@@ -17,29 +17,53 @@ interface Stats {
 
 async function loadStats(kelompokId: string | null): Promise<Stats> {
   const supabase = await createClient();
-  const kuponQ = supabase.from("kupon").select("status");
-  const pesertaQ = supabase.from("peserta").select("nominal_donasi, wa_status");
-  if (kelompokId) {
-    kuponQ.eq("kelompok_id", kelompokId);
-    pesertaQ.eq("kelompok_id", kelompokId);
-  }
-  const [{ data: kupon }, { data: peserta }] = await Promise.all([kuponQ, pesertaQ]);
-  const stats: Stats = {
-    total_kupon: kupon?.length ?? 0, assigned: 0, redeemed: 0,
-    total_donasi: 0, total_peserta: peserta?.length ?? 0,
-    wa_sent: 0, wa_failed: 0, wa_pending: 0,
+
+  // Hitung via COUNT di server (head: true) — tidak menarik seluruh baris.
+  const kuponCount = (status?: string) => {
+    let q = supabase.from("kupon").select("id", { count: "exact", head: true });
+    if (kelompokId) q = q.eq("kelompok_id", kelompokId);
+    if (status) q = q.eq("status", status);
+    return q;
   };
-  for (const k of (kupon ?? []) as { status: string }[]) {
-    if (k.status === "assigned") stats.assigned++;
-    else if (k.status === "redeemed") stats.redeemed++;
-  }
-  for (const p of (peserta ?? []) as { nominal_donasi: number | string; wa_status: string }[]) {
-    stats.total_donasi += Number(p.nominal_donasi ?? 0);
-    if (p.wa_status === "sent") stats.wa_sent++;
-    else if (p.wa_status === "failed") stats.wa_failed++;
-    else stats.wa_pending++;
-  }
-  return stats;
+  const pesertaCount = (waStatus?: string) => {
+    let q = supabase.from("peserta").select("id", { count: "exact", head: true });
+    if (kelompokId) q = q.eq("kelompok_id", kelompokId);
+    if (waStatus) q = q.eq("wa_status", waStatus);
+    return q;
+  };
+  // total_donasi butuh SUM: ambil hanya kolom nominal_donasi (satu kolom).
+  const donasiQ = (() => {
+    let q = supabase.from("peserta").select("nominal_donasi");
+    if (kelompokId) q = q.eq("kelompok_id", kelompokId);
+    return q;
+  })();
+
+  const [
+    totalKupon, assigned, redeemed,
+    totalPeserta, waSent, waFailed,
+    { data: donasiRows },
+  ] = await Promise.all([
+    kuponCount(), kuponCount("assigned"), kuponCount("redeemed"),
+    pesertaCount(), pesertaCount("sent"), pesertaCount("failed"),
+    donasiQ,
+  ]);
+
+  const total_peserta = totalPeserta.count ?? 0;
+  const wa_sent = waSent.count ?? 0;
+  const wa_failed = waFailed.count ?? 0;
+  const total_donasi = ((donasiRows ?? []) as { nominal_donasi: number | string }[])
+    .reduce((sum, p) => sum + Number(p.nominal_donasi ?? 0), 0);
+
+  return {
+    total_kupon: totalKupon.count ?? 0,
+    assigned: assigned.count ?? 0,
+    redeemed: redeemed.count ?? 0,
+    total_donasi,
+    total_peserta,
+    wa_sent,
+    wa_failed,
+    wa_pending: Math.max(0, total_peserta - wa_sent - wa_failed),
+  };
 }
 
 interface StatProps {

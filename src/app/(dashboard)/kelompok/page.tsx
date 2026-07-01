@@ -27,14 +27,14 @@ export default async function KelompokPage(props: {
 
   const rows = (data ?? []) as Row[];
 
+  // Pakai satu client & jalankan semua count paralel (hindari bikin client per baris).
   const counts = await Promise.all(
     rows.map(async (k) => {
-      const sb = await createClient();
       const [tot, asg, red, pes] = await Promise.all([
-        sb.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
-        sb.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "assigned"),
-        sb.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "redeemed"),
-        sb.from("peserta").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
+        supabase.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
+        supabase.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "assigned"),
+        supabase.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "redeemed"),
+        supabase.from("peserta").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
       ]);
       return { id: k.id, total: tot.count ?? 0, assigned: asg.count ?? 0, redeemed: red.count ?? 0, peserta: pes.count ?? 0 };
     }),
