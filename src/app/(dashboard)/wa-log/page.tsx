@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { formatTanggalWITA, formatJamWITA } from "@/lib/utils";
 
 interface WaLogRow {
   id: string;
@@ -23,8 +24,7 @@ const PER_OPTIONS = ["20", "40", "60", "100"] as const;
 
 function fmtDateTime(iso: string | null): string {
   if (!iso) return "-";
-  const d = new Date(iso);
-  return `${d.toLocaleDateString("id-ID")} ${d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit", second: "2-digit" })}`;
+  return `${formatTanggalWITA(iso)} ${formatJamWITA(iso, { second: "2-digit" })}`;
 }
 
 function statusBadge(status: string) {

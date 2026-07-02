@@ -3,6 +3,7 @@
 import { redirect } from "next/navigation";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { formatJamWITA, formatTanggalWITA } from "@/lib/utils";
 
 function csvEscape(v: unknown): string {
   const s = v == null ? "" : String(v);
@@ -83,10 +84,9 @@ export async function exportUangMasukCsv(formData: FormData): Promise<void> {
   const header = ["Tanggal", "Jam", "Nama", "Kelompok", "Metode", "Nominal", "Petugas"];
   const lines = [header.join(",")];
   for (const r of rows) {
-    const d = r.registered_at ? new Date(r.registered_at) : null;
     lines.push([
-      d ? d.toLocaleDateString("id-ID") : "",
-      d ? d.toLocaleTimeString("id-ID") : "",
+      r.registered_at ? formatTanggalWITA(r.registered_at) : "",
+      r.registered_at ? formatJamWITA(r.registered_at, { second: "2-digit" }) : "",
       r.nama, r.kelompok?.nama ?? "", r.metode_bayar ?? "",
       r.nominal_donasi, r.created_by ? petugas.get(r.created_by) ?? "" : "",
     ].map(csvEscape).join(","));

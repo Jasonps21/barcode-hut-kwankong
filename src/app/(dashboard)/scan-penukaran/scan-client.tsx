@@ -5,6 +5,7 @@ import { AlertTriangle, ArrowRight, Camera, CameraOff, CheckCircle2, Loader2, Ro
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { QrScanner } from "@/components/scanner/qr-scanner";
+import { formatTanggalJamWITA } from "@/lib/utils";
 import { lookupKupon, redeemKupon, type LookupResult } from "./actions";
 
 export function ScanPenukaranClient() {
@@ -110,7 +111,7 @@ export function ScanPenukaranClient() {
               <div className="flex items-center gap-2 font-medium"><XCircle className="h-5 w-5" /> Kupon sudah ditukar.</div>
               {result.peserta && <p className="text-sm">Peserta: <b>{result.peserta.nama}</b></p>}
               {result.redeemed_at && (
-                <p className="text-sm">Pada: {new Date(result.redeemed_at).toLocaleString("id-ID")}</p>
+                <p className="text-sm">Pada: {formatTanggalJamWITA(result.redeemed_at)}</p>
               )}
             </div>
           )}

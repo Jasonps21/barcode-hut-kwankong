@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatRupiah } from "@/lib/utils";
+import { dateKeyWITA, formatRupiah, formatTanggalJamWITA, formatTanggalWITA } from "@/lib/utils";
 
 interface PesertaRow {
   id: string; nama: string; nominal_donasi: number | string;
@@ -16,13 +16,10 @@ interface PesertaRow {
 interface KuponRow { nomor_kupon: string; peserta_id: string | null; assigned_at: string | null }
 
 function dateKey(iso: string | null): string {
-  if (!iso) return "-";
-  return new Date(iso).toLocaleDateString("id-ID", { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
+  return formatTanggalWITA(iso, { weekday: "short", day: "2-digit", month: "short", year: "numeric" });
 }
 function fmtDateTime(iso: string | null): string {
-  if (!iso) return "-";
-  const d = new Date(iso);
-  return `${d.toLocaleDateString("id-ID")} ${d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" })}`;
+  return formatTanggalJamWITA(iso);
 }
 
 export default async function LaporanSayaPage(props: {
@@ -74,7 +71,7 @@ export default async function LaporanSayaPage(props: {
   const harian = new Map<string, { tgl: string; ts: number; peserta: number; kupon: number }>();
   function bump(iso: string | null, field: "peserta" | "kupon") {
     const key = dateKey(iso);
-    const ts = iso ? new Date(new Date(iso).toDateString()).getTime() : 0;
+    const ts = iso ? new Date(dateKeyWITA(iso)).getTime() : 0;
     const cur = harian.get(key) ?? { tgl: key, ts, peserta: 0, kupon: 0 };
     cur[field] += 1;
     harian.set(key, cur);

@@ -8,7 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { formatRupiah } from "@/lib/utils";
+import { formatJamWITA, formatRupiah, formatTanggalWITA } from "@/lib/utils";
 import { exportPesertaCsv, exportUangMasukCsv } from "./actions";
 
 interface KelompokRow {
@@ -18,8 +18,7 @@ interface KelompokRow {
 
 function fmtDateTime(iso: string | null): { tgl: string; jam: string } {
   if (!iso) return { tgl: "-", jam: "" };
-  const d = new Date(iso);
-  return { tgl: d.toLocaleDateString("id-ID"), jam: d.toLocaleTimeString("id-ID", { hour: "2-digit", minute: "2-digit" }) };
+  return { tgl: formatTanggalWITA(iso), jam: formatJamWITA(iso) };
 }
 
 export default async function LaporanPage(props: {
@@ -108,7 +107,7 @@ export default async function LaporanPage(props: {
   // grup kupon per tanggal
   const perHari = new Map<string, number>();
   for (const k of kupons) {
-    const key = k.assigned_at ? new Date(k.assigned_at).toLocaleDateString("id-ID") : "-";
+    const key = k.assigned_at ? formatTanggalWITA(k.assigned_at) : "-";
     perHari.set(key, (perHari.get(key) ?? 0) + 1);
   }
   const perHariRows = [...perHari.entries()];
