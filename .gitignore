@@ -42,3 +42,6 @@ next-env.d.ts
 
 # data peserta (jangan commit — berisi data pribadi)
 *.xlsx
+
+.vercel
+.env*

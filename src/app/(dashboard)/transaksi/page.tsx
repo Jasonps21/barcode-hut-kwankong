@@ -11,6 +11,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { formatRupiah, formatTanggalJamWITA } from "@/lib/utils";
 import { buildWaMessage, normalizeWaNumber, formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import { resendWaAction } from "../peserta/actions";
+import { KuponDetailModal } from "./kupon-detail-modal";
 
 // Beri ruang waktu untuk pengiriman WA (Kirim Ulang) via `after()` di serverless.
 export const maxDuration = 60;
@@ -69,11 +70,41 @@ export default async function TransaksiPage(props: {
   }
   query.range((page - 1) * perNum, page * perNum - 1);
 
-  const [{ data, count }, { data: kelompokList }] = await Promise.all([
+  // Total nominal per metode bayar, mengikuti filter yang sama dengan daftar
+  // transaksi (kelompok/status WA/pencarian) tapi mencakup SEMUA halaman.
+  function donasiByMetode(metode: "cash" | "transfer") {
+    let m = supabase.from("peserta").select("nominal_donasi").gt("nominal_donasi", 0).eq("metode_bayar", metode);
+    if (kelompokFilter) m = m.eq("kelompok_id", kelompokFilter);
+    if (waStatus !== "all") m = m.eq("wa_status", waStatus);
+    if (q) {
+      const like = `%${q}%`;
+      m = m.or(`nama.ilike.${like},no_whatsapp.ilike.${like}`);
+    }
+    return m;
+  }
+
+  // Total kupon yang sudah diedarkan (diambil peserta), lepas dari filter
+  // status WA/pencarian — hanya scope kelompok yang relevan.
+  let kuponDiedarkanQuery = supabase
+    .from("kupon")
+    .select("id", { count: "exact", head: true })
+    .in("status", ["assigned", "redeemed"]);
+  if (kelompokFilter) kuponDiedarkanQuery = kuponDiedarkanQuery.eq("kelompok_id", kelompokFilter);
+
+  const [
+    { data, count },
+    { data: kelompokList },
+    { data: cashRows },
+    { data: transferRows },
+    { count: kuponDiedarkan },
+  ] = await Promise.all([
     query,
     profile.role === "admin"
       ? supabase.from("kelompok").select("id, nama").order("nama")
       : Promise.resolve({ data: null }),
+    donasiByMetode("cash"),
+    donasiByMetode("transfer"),
+    kuponDiedarkanQuery,
   ]);
 
   const rows = (data ?? []) as unknown as TransaksiRow[];
@@ -82,6 +113,10 @@ export default async function TransaksiPage(props: {
 
   // Total nominal donasi untuk baris yang tampil di halaman ini.
   const totalNominalHalaman = rows.reduce((sum, r) => sum + Number(r.nominal_donasi || 0), 0);
+  const totalCash = ((cashRows ?? []) as { nominal_donasi: number | string }[])
+    .reduce((sum, r) => sum + Number(r.nominal_donasi || 0), 0);
+  const totalTransfer = ((transferRows ?? []) as { nominal_donasi: number | string }[])
+    .reduce((sum, r) => sum + Number(r.nominal_donasi || 0), 0);
 
   function buildWaLink(p: TransaksiRow, totalKupon: number): string | null {
     const target = normalizeWaNumber(p.no_whatsapp);
@@ -96,17 +131,24 @@ export default async function TransaksiPage(props: {
     return `https://wa.me/${target}?text=${encodeURIComponent(message)}`;
   }
 
-  // Hitung jumlah kupon per peserta untuk link WA manual.
-  const kuponCount = new Map<string, number>();
+  // Nomor kupon per peserta — dipakai untuk link WA manual & modal detail kupon.
+  const kuponByPeserta = new Map<string, string[]>();
   if (rows.length) {
     const { data: kData } = await supabase
       .from("kupon")
-      .select("peserta_id")
-      .in("peserta_id", rows.map((r) => r.id));
-    for (const k of (kData ?? []) as Array<{ peserta_id: string | null }>) {
-      if (k.peserta_id) kuponCount.set(k.peserta_id, (kuponCount.get(k.peserta_id) ?? 0) + 1);
+      .select("peserta_id, nomor_kupon")
+      .in("peserta_id", rows.map((r) => r.id))
+      .order("nomor_kupon");
+    for (const k of (kData ?? []) as Array<{ peserta_id: string | null; nomor_kupon: string }>) {
+      if (!k.peserta_id) continue;
+      const list = kuponByPeserta.get(k.peserta_id) ?? [];
+      list.push(k.nomor_kupon);
+      kuponByPeserta.set(k.peserta_id, list);
     }
   }
+  const kuponCount = new Map<string, number>(
+    [...kuponByPeserta.entries()].map(([id, list]) => [id, list.length]),
+  );
 
   function hrefWith(overrides: Record<string, string | undefined>): string {
     const params = new URLSearchParams();
@@ -132,7 +174,7 @@ export default async function TransaksiPage(props: {
         <p className="text-sm text-muted-foreground">Daftar transaksi donasi peserta & status pengiriman WhatsApp.</p>
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
         <Card>
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Total Transaksi</p>
@@ -143,6 +185,24 @@ export default async function TransaksiPage(props: {
           <CardContent className="p-4">
             <p className="text-xs text-muted-foreground">Total Donasi (halaman ini)</p>
             <p className="text-2xl font-bold tabular-nums">{formatRupiah(totalNominalHalaman)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Total Transfer</p>
+            <p className="text-2xl font-bold tabular-nums text-blue-600 dark:text-blue-400">{formatRupiah(totalTransfer)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Total Cash</p>
+            <p className="text-2xl font-bold tabular-nums text-emerald-600 dark:text-emerald-400">{formatRupiah(totalCash)}</p>
+          </CardContent>
+        </Card>
+        <Card>
+          <CardContent className="p-4">
+            <p className="text-xs text-muted-foreground">Total Kupon Diedarkan</p>
+            <p className="text-2xl font-bold tabular-nums text-violet-600 dark:text-violet-400">{kuponDiedarkan ?? 0}</p>
           </CardContent>
         </Card>
       </div>
@@ -201,6 +261,7 @@ export default async function TransaksiPage(props: {
                 <TableHead>Kelompok</TableHead>
                 <TableHead className="text-right">Donasi</TableHead>
                 <TableHead>Bayar</TableHead>
+                <TableHead>Total Kupon</TableHead>
                 <TableHead>Status WA</TableHead>
                 <TableHead className="text-right">Aksi</TableHead>
               </TableRow>
@@ -208,12 +269,13 @@ export default async function TransaksiPage(props: {
             <TableBody>
               {rows.length === 0 && (
                 <TableRow>
-                  <TableCell colSpan={7} className="py-10 text-center text-muted-foreground">
+                  <TableCell colSpan={8} className="py-10 text-center text-muted-foreground">
                     {q || waStatus !== "all" ? "Tidak ada transaksi yang cocok dengan filter." : "Belum ada transaksi."}
                   </TableCell>
                 </TableRow>
               )}
               {rows.map((p) => {
+                const kuponList = kuponByPeserta.get(p.id) ?? [];
                 const totalKupon = kuponCount.get(p.id) ?? 0;
                 const waLink = buildWaLink(p, totalKupon);
                 const hasWa = Boolean(normalizeWaNumber(p.no_whatsapp));
@@ -234,6 +296,9 @@ export default async function TransaksiPage(props: {
                       ) : (
                         <span className="text-muted-foreground">-</span>
                       )}
+                    </TableCell>
+                    <TableCell>
+                      <KuponDetailModal nama={p.nama} kupon={kuponList} />
                     </TableCell>
                     <TableCell>
                       {waBadge(p.wa_status)}

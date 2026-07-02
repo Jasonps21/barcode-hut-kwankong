@@ -52,6 +52,19 @@ export interface WaLog {
   sent_at: string;
 }
 
+export interface ErrorLog {
+  id: string;
+  source: "server" | "client";
+  message: string;
+  stack: string | null;
+  digest: string | null;
+  url: string | null;
+  user_id: string | null;
+  user_agent: string | null;
+  context: unknown;
+  created_at: string;
+}
+
 export interface Kupon {
   id: string;
   nomor_kupon: string;

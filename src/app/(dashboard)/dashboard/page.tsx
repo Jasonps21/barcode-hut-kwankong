@@ -1,4 +1,4 @@
-import { BadgeCheck, BanknoteArrowUp, MessageCircle, MessageCircleOff, MessageCircleWarning, PackageCheck, Ticket, Users } from "lucide-react";
+import { BadgeCheck, BanknoteArrowUp, HandCoins, MessageCircle, MessageCircleOff, MessageCircleWarning, PackageCheck, Ticket, Users } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,6 +10,7 @@ interface Stats {
   redeemed: number;
   total_donasi: number;
   total_peserta: number;
+  peserta_donasi: number;
   wa_sent: number;
   wa_failed: number;
   wa_pending: number;
@@ -31,6 +32,13 @@ async function loadStats(kelompokId: string | null): Promise<Stats> {
     if (waStatus) q = q.eq("wa_status", waStatus);
     return q;
   };
+  // Peserta "sudah ikut donasi" = sudah selesai registrasi (registered_at terisi),
+  // beda dengan sekadar data yang diimpor tapi belum daftar/bayar.
+  const pesertaDonasiCount = (() => {
+    let q = supabase.from("peserta").select("id", { count: "exact", head: true }).not("registered_at", "is", null);
+    if (kelompokId) q = q.eq("kelompok_id", kelompokId);
+    return q;
+  })();
   // total_donasi butuh SUM: ambil hanya kolom nominal_donasi (satu kolom).
   const donasiQ = (() => {
     let q = supabase.from("peserta").select("nominal_donasi");
@@ -40,11 +48,11 @@ async function loadStats(kelompokId: string | null): Promise<Stats> {
 
   const [
     totalKupon, assigned, redeemed,
-    totalPeserta, waSent, waFailed,
+    totalPeserta, pesertaDonasi, waSent, waFailed,
     { data: donasiRows },
   ] = await Promise.all([
     kuponCount(), kuponCount("assigned"), kuponCount("redeemed"),
-    pesertaCount(), pesertaCount("sent"), pesertaCount("failed"),
+    pesertaCount(), pesertaDonasiCount, pesertaCount("sent"), pesertaCount("failed"),
     donasiQ,
   ]);
 
@@ -60,6 +68,7 @@ async function loadStats(kelompokId: string | null): Promise<Stats> {
     redeemed: redeemed.count ?? 0,
     total_donasi,
     total_peserta,
+    peserta_donasi: pesertaDonasi.count ?? 0,
     wa_sent,
     wa_failed,
     wa_pending: Math.max(0, total_peserta - wa_sent - wa_failed),
@@ -94,6 +103,7 @@ export default async function DashboardPage() {
   const stats = await loadStats(profile.role === "admin" ? null : profile.kelompok_id);
 
   const pct = (n: number) => stats.total_kupon ? ` (${Math.round((n / stats.total_kupon) * 100)}%)` : "";
+  const pesertaDonasiPct = stats.total_peserta ? Math.round((stats.peserta_donasi / stats.total_peserta) * 100) : 0;
 
   return (
     <div className="space-y-6">
@@ -111,7 +121,14 @@ export default async function DashboardPage() {
         <StatCard label="Total Peserta" value={String(stats.total_peserta)} icon={Users} accent="text-violet-500" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+        <StatCard
+          label="Sudah Ikut Donasi"
+          value={`${stats.peserta_donasi} (${pesertaDonasiPct}%)`}
+          hint={`dari ${stats.total_peserta} total peserta di aplikasi`}
+          icon={HandCoins}
+          accent="text-amber-600"
+        />
         <StatCard label="Total Donasi" value={formatRupiah(stats.total_donasi)} icon={BanknoteArrowUp} accent="text-emerald-600" />
         <StatCard label="WA Terkirim" value={String(stats.wa_sent)} icon={MessageCircle} accent="text-emerald-500" />
         <StatCard label="WA Gagal" value={String(stats.wa_failed)} icon={MessageCircleWarning} accent="text-rose-500" />

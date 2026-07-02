@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
+import { ErrorListener } from "@/components/error-listener";
 
 const eventName = process.env.NEXT_PUBLIC_EVENT_NAME ?? "Sistem Bingkisan";
 
@@ -26,7 +27,10 @@ export const viewport: Viewport = {
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
     <html lang="id" className="h-full antialiased">
-      <body className="min-h-full bg-background text-foreground">{children}</body>
+      <body className="min-h-full bg-background text-foreground">
+        <ErrorListener />
+        {children}
+      </body>
     </html>
   );
 }
