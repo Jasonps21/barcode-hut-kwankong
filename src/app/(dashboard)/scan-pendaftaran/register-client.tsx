@@ -192,7 +192,7 @@ export function ScanPendaftaranClient() {
         )}
         <div className="space-y-2">
           <Label htmlFor="nominal_donasi">Nominal Donasi</Label>
-          <RupiahInput id="nominal_donasi" name="nominal_donasi" placeholder="100.000" required />
+          <RupiahInput id="nominal_donasi" name="nominal_donasi" placeholder="0" required />
         </div>
         <div className="space-y-2">
           <Label>Metode Bayar</Label>

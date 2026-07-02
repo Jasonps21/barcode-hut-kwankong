@@ -51,7 +51,7 @@ export function EditPesertaForm({ peserta }: { peserta: EditPeserta }) {
         </div>
         <div className="space-y-2">
           <Label htmlFor="nominal_donasi">Nominal Donasi</Label>
-          <RupiahInput id="nominal_donasi" name="nominal_donasi" defaultValue={Number(peserta.nominal_donasi ?? 0) || ""} placeholder="100.000" />
+          <RupiahInput id="nominal_donasi" name="nominal_donasi" defaultValue={Number(peserta.nominal_donasi ?? 0) || ""} placeholder="0" />
         </div>
         <div className="space-y-2">
           <Label>Metode Bayar</Label>
