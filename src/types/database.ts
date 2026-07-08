@@ -65,6 +65,16 @@ export interface ErrorLog {
   created_at: string;
 }
 
+export interface LogAktivitas {
+  id: string;
+  user_id: string | null;
+  aksi: string;
+  tabel_terkait: string | null;
+  record_id: string | null;
+  detail: unknown;
+  created_at: string;
+}
+
 export interface Kupon {
   id: string;
   nomor_kupon: string;

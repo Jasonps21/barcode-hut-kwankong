@@ -2,7 +2,7 @@
 
 import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import {
-  Camera, CameraOff, CheckCircle2, Loader2, Pencil, Plus, Save, Search, User, X,
+  Camera, CameraOff, CheckCircle2, Loader2, Lock, Pencil, Plus, Save, Search, User, X,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -113,29 +113,43 @@ export function ScanPendaftaranClient() {
         )}
 
         <div className="divide-y rounded-lg border">
-          {results.map((p) => (
-            <button
-              key={p.id}
-              type="button"
-              onClick={() => { setSelected(p); setKupons([]); setTanpaKupon(false); setEditHp(false); }}
-              className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-accent"
-            >
-              <User className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <span className="font-medium">{p.nama}</span>
-                  {p.nama_hanzi && <span lang="zh" className="text-sm text-muted-foreground">{p.nama_hanzi}</span>}
-                  <Badge variant="outline" className="text-[10px]">{p.kelompok_nama ?? "-"}</Badge>
-                  {p.kupon_count > 0 && (
-                    <Badge variant="success" className="text-[10px]">sudah {p.kupon_count} kupon</Badge>
+          {results.map((p) => {
+            const terkunci = Number(p.nominal_donasi) > 0;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                disabled={terkunci}
+                onClick={() => { setSelected(p); setKupons([]); setTanpaKupon(false); setEditHp(false); }}
+                className="flex w-full items-start gap-3 p-3 text-left transition-colors enabled:hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+              >
+                {terkunci
+                  ? <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-500" />
+                  : <User className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium">{p.nama}</span>
+                    {p.nama_hanzi && <span lang="zh" className="text-sm text-muted-foreground">{p.nama_hanzi}</span>}
+                    <Badge variant="outline" className="text-[10px]">{p.kelompok_nama ?? "-"}</Badge>
+                    {p.kupon_count > 0 && (
+                      <Badge variant="success" className="text-[10px]">sudah {p.kupon_count} kupon</Badge>
+                    )}
+                    {terkunci && (
+                      <Badge variant="warning" className="text-[10px]">sudah donasi — terkunci</Badge>
+                    )}
+                  </div>
+                  <div className="truncate text-xs text-muted-foreground">
+                    {p.alamat}{p.no_whatsapp ? ` · ${p.no_whatsapp}` : ""}
+                  </div>
+                  {terkunci && (
+                    <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-500">
+                      Sudah menginput donasi. Perubahan hanya bisa lewat admin (menu Transaksi).
+                    </div>
                   )}
                 </div>
-                <div className="truncate text-xs text-muted-foreground">
-                  {p.alamat}{p.no_whatsapp ? ` · ${p.no_whatsapp}` : ""}
-                </div>
-              </div>
-            </button>
-          ))}
+              </button>
+            );
+          })}
         </div>
       </div>
     );

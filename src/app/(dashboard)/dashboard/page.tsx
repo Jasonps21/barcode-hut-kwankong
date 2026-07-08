@@ -3,6 +3,7 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatRupiah } from "@/lib/utils";
+import { sumNominalDonasi } from "@/lib/donasi-sum";
 
 interface Stats {
   total_kupon: number;
@@ -39,28 +40,27 @@ async function loadStats(kelompokId: string | null): Promise<Stats> {
     if (kelompokId) q = q.eq("kelompok_id", kelompokId);
     return q;
   })();
-  // total_donasi butuh SUM: ambil hanya kolom nominal_donasi (satu kolom).
-  const donasiQ = (() => {
+  // total_donasi butuh SUM semua baris (bukan hanya 1000 pertama): pakai
+  // helper yang menjumlahkan seluruh baris secara paginasi.
+  const makeDonasiQuery = () => {
     let q = supabase.from("peserta").select("nominal_donasi");
     if (kelompokId) q = q.eq("kelompok_id", kelompokId);
     return q;
-  })();
+  };
 
   const [
     totalKupon, assigned, redeemed,
     totalPeserta, pesertaDonasi, waSent, waFailed,
-    { data: donasiRows },
+    total_donasi,
   ] = await Promise.all([
     kuponCount(), kuponCount("assigned"), kuponCount("redeemed"),
     pesertaCount(), pesertaDonasiCount, pesertaCount("sent"), pesertaCount("failed"),
-    donasiQ,
+    sumNominalDonasi(makeDonasiQuery),
   ]);
 
   const total_peserta = totalPeserta.count ?? 0;
   const wa_sent = waSent.count ?? 0;
   const wa_failed = waFailed.count ?? 0;
-  const total_donasi = ((donasiRows ?? []) as { nominal_donasi: number | string }[])
-    .reduce((sum, p) => sum + Number(p.nominal_donasi ?? 0), 0);
 
   return {
     total_kupon: totalKupon.count ?? 0,

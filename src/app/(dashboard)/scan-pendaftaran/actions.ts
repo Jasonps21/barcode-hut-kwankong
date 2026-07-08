@@ -129,14 +129,27 @@ export async function registerExistingPesertaAction(
 
   const { data: pesertaData, error: pErr } = await admin
     .from("peserta")
-    .select("id, nama, alamat, no_whatsapp, kelompok_id")
+    .select("id, nama, alamat, no_whatsapp, kelompok_id, nominal_donasi")
     .eq("id", pesertaId)
     .single();
   if (pErr || !pesertaData) return { error: "Peserta tidak ditemukan." };
-  const peserta = pesertaData as { id: string; nama: string; alamat: string; no_whatsapp: string; kelompok_id: string };
+  const peserta = pesertaData as {
+    id: string; nama: string; alamat: string; no_whatsapp: string;
+    kelompok_id: string; nominal_donasi: number | string;
+  };
 
   if (profile.role !== "admin" && peserta.kelompok_id !== profile.kelompok_id) {
     return { error: "Peserta bukan milik kelompok Anda." };
+  }
+
+  // KUNCI ANTI-MANIPULASI: peserta yang sudah menginput donasi tidak boleh
+  // didaftarkan/ditimpa ulang dari sini. Ini mencegah donasi lama (mis. 1jt)
+  // tertimpa nominal baru yang lebih kecil (mis. 500rb). Perubahan hanya boleh
+  // dilakukan admin lewat menu Transaksi (halaman edit peserta).
+  if (Number(peserta.nominal_donasi) > 0) {
+    return {
+      error: `"${peserta.nama}" sudah menginput donasi dan terkunci. Untuk mengubah nominal atau menambah kupon, hubungi admin agar mengeditnya lewat menu Transaksi.`,
+    };
   }
 
   // ---- validasi kupon (dilewati bila peserta tidak mengambil kupon) ----

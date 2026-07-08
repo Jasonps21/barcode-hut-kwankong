@@ -120,8 +120,8 @@ export default async function UsersPage() {
                       <span className="text-xs text-muted-foreground">Akses penuh</span>
                     ) : u.role === "petugas_pendaftaran" ? (
                       <div className="flex flex-wrap gap-1.5">
-                        <PermToggle userId={u.id} perm="edit" value={u.can_edit_peserta} label="Edit" />
                         <PermToggle userId={u.id} perm="delete" value={u.can_delete_peserta} label="Hapus" />
+                        <span className="text-xs text-muted-foreground" title="Ubah data peserta/transaksi hanya bisa dilakukan admin">Edit: khusus admin</span>
                       </div>
                     ) : (
                       <span className="text-xs text-muted-foreground">—</span>

@@ -285,6 +285,14 @@ export async function updatePesertaAction(
   const { error } = await admin.from("peserta").update(payload).eq("id", id);
   if (error) return { error: `Gagal simpan: ${error.message}` };
 
+  await admin.from("log_aktivitas").insert({
+    user_id: profile.id,
+    aksi: "update_peserta",
+    tabel_terkait: "peserta",
+    record_id: id,
+    detail: { nama, nominal_donasi: payload.nominal_donasi, metode_bayar },
+  });
+
   revalidatePath("/peserta");
   revalidatePath(`/peserta/${id}/edit`);
   return { success: "Data peserta diperbarui." };

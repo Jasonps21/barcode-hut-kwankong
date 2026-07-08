@@ -26,9 +26,9 @@ export async function requireProfile(allowed?: Role[]): Promise<Profile> {
   return profile;
 }
 
-/** Admin selalu boleh; petugas mengikuti flag izin per-user. */
+/** Hanya admin yang boleh mengubah data peserta/transaksi — data donasi terlalu sensitif untuk dibuka ke petugas. */
 export function canEditPeserta(p: Profile): boolean {
-  return p.role === "admin" || p.can_edit_peserta === true;
+  return p.role === "admin";
 }
 
 export function canDeletePeserta(p: Profile): boolean {

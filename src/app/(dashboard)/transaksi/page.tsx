@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ExternalLink, ReceiptText, Search, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Pencil, ReceiptText, Search, Send } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -9,6 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupiah, formatTanggalJamWITA } from "@/lib/utils";
+import { sumNominalDonasi } from "@/lib/donasi-sum";
 import { buildWaMessage, normalizeWaNumber, formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import { resendWaAction } from "../peserta/actions";
 import { KuponDetailModal } from "./kupon-detail-modal";
@@ -94,16 +95,16 @@ export default async function TransaksiPage(props: {
   const [
     { data, count },
     { data: kelompokList },
-    { data: cashRows },
-    { data: transferRows },
+    totalCash,
+    totalTransfer,
     { count: kuponDiedarkan },
   ] = await Promise.all([
     query,
     profile.role === "admin"
       ? supabase.from("kelompok").select("id, nama").order("nama")
       : Promise.resolve({ data: null }),
-    donasiByMetode("cash"),
-    donasiByMetode("transfer"),
+    sumNominalDonasi(() => donasiByMetode("cash")),
+    sumNominalDonasi(() => donasiByMetode("transfer")),
     kuponDiedarkanQuery,
   ]);
 
@@ -113,10 +114,6 @@ export default async function TransaksiPage(props: {
 
   // Total nominal donasi untuk baris yang tampil di halaman ini.
   const totalNominalHalaman = rows.reduce((sum, r) => sum + Number(r.nominal_donasi || 0), 0);
-  const totalCash = ((cashRows ?? []) as { nominal_donasi: number | string }[])
-    .reduce((sum, r) => sum + Number(r.nominal_donasi || 0), 0);
-  const totalTransfer = ((transferRows ?? []) as { nominal_donasi: number | string }[])
-    .reduce((sum, r) => sum + Number(r.nominal_donasi || 0), 0);
 
   function buildWaLink(p: TransaksiRow, totalKupon: number): string | null {
     const target = normalizeWaNumber(p.no_whatsapp);
@@ -308,6 +305,15 @@ export default async function TransaksiPage(props: {
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-wrap justify-end gap-2">
+                        {profile.role === "admin" && (
+                          <Link
+                            href={`/peserta/${p.id}/edit`}
+                            title="Edit nominal donasi & kupon peserta ini"
+                            className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent [&_svg]:size-3.5"
+                          >
+                            <Pencil /> Edit
+                          </Link>
+                        )}
                         {hasWa && (
                           <form action={resendWaAction}>
                             <input type="hidden" name="peserta_id" value={p.id} />
