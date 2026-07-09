@@ -78,6 +78,25 @@ export async function setUserPermissionAction(formData: FormData): Promise<void>
   revalidatePath("/users");
 }
 
+export type UpdatePasswordState = { error?: string; success?: string } | undefined;
+
+export async function updateUserPasswordAction(_prev: UpdatePasswordState, formData: FormData): Promise<UpdatePasswordState> {
+  await requireProfile(["admin"]);
+
+  const userId = String(formData.get("user_id") ?? "");
+  const password = String(formData.get("password") ?? "");
+
+  if (!userId) return { error: "User tidak valid." };
+  if (password.length < 6) return { error: "Password minimal 6 karakter." };
+
+  const admin = createAdminClient();
+  const { error } = await admin.auth.admin.updateUserById(userId, { password });
+  if (error) return { error: `Gagal ubah password: ${error.message}` };
+
+  revalidatePath("/users");
+  return { success: "Password berhasil diubah." };
+}
+
 export async function updateUserRoleAction(formData: FormData): Promise<void> {
   await requireProfile(["admin"]);
   const userId = String(formData.get("user_id") ?? "");

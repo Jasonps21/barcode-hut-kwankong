@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { cn } from "@/lib/utils";
 import { UserForm } from "./user-form";
+import { PasswordForm } from "./password-form";
 import { deleteUserAction, setUserPermissionAction } from "./actions";
 
 const ROLE_LABEL: Record<string, string> = {
@@ -128,14 +129,17 @@ export default async function UsersPage() {
                     )}
                   </TableCell>
                   <TableCell className="text-right">
-                    {u.id !== me.id && (
-                      <form action={deleteUserAction}>
-                        <input type="hidden" name="user_id" value={u.id} />
-                        <Button type="submit" variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
-                          <Trash2 /> Hapus
-                        </Button>
-                      </form>
-                    )}
+                    <div className="flex flex-col items-end gap-1.5">
+                      <PasswordForm userId={u.id} userLabel={u.nama} />
+                      {u.id !== me.id && (
+                        <form action={deleteUserAction}>
+                          <input type="hidden" name="user_id" value={u.id} />
+                          <Button type="submit" variant="outline" size="sm" className="text-destructive hover:bg-destructive/10">
+                            <Trash2 /> Hapus
+                          </Button>
+                        </form>
+                      )}
+                    </div>
                   </TableCell>
                 </TableRow>
               ))}
