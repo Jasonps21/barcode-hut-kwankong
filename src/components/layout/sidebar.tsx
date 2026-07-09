@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Users, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog, MessageSquare, ClipboardList, ReceiptText, AlertTriangle, History,
+  LayoutDashboard, Users, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog, MessageSquare, ClipboardList, ReceiptText, AlertTriangle, History, Ticket,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types/database";
@@ -13,6 +13,7 @@ interface NavItem { href: string; label: string; icon: React.ComponentType<{ cla
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "petugas_pendaftaran", "petugas_distribusi"] },
   { href: "/kelompok", label: "Kelompok", icon: Layers, roles: ["admin"] },
+  { href: "/kupon", label: "Cek Kupon", icon: Ticket, roles: ["admin"] },
   { href: "/peserta", label: "Peserta", icon: Users, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/peserta/tambah", label: "Tambah Peserta", icon: UserPlus, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/transaksi", label: "Transaksi", icon: ReceiptText, roles: ["admin", "petugas_pendaftaran"] },
