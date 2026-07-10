@@ -13,6 +13,7 @@ import { sumNominalDonasi } from "@/lib/donasi-sum";
 import { buildWaMessage, normalizeWaNumber, formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import { resendWaAction } from "../peserta/actions";
 import { KuponDetailModal } from "./kupon-detail-modal";
+import { CopyPesanButton } from "./copy-pesan-button";
 
 // Beri ruang waktu untuk pengiriman WA (Kirim Ulang) via `after()` di serverless.
 export const maxDuration = 60;
@@ -115,16 +116,19 @@ export default async function TransaksiPage(props: {
   // Total nominal donasi untuk baris yang tampil di halaman ini.
   const totalNominalHalaman = rows.reduce((sum, r) => sum + Number(r.nominal_donasi || 0), 0);
 
-  function buildWaLink(p: TransaksiRow, totalKupon: number): string | null {
-    const target = normalizeWaNumber(p.no_whatsapp);
-    if (!target) return null;
-    const message = buildWaMessage({
+  function buildPesan(p: TransaksiRow, totalKupon: number): string {
+    return buildWaMessage({
       nomor: formatNomorTT(p.nomor_tt, p.registered_at),
       nama: p.nama, alamat: p.alamat,
       nominal_donasi: p.nominal_donasi,
       tanggal: formatTanggalIndo(p.registered_at),
       total_kupon: totalKupon,
     });
+  }
+
+  function buildWaLink(p: TransaksiRow, message: string): string | null {
+    const target = normalizeWaNumber(p.no_whatsapp);
+    if (!target) return null;
     return `https://wa.me/${target}?text=${encodeURIComponent(message)}`;
   }
 
@@ -274,7 +278,8 @@ export default async function TransaksiPage(props: {
               {rows.map((p) => {
                 const kuponList = kuponByPeserta.get(p.id) ?? [];
                 const totalKupon = kuponCount.get(p.id) ?? 0;
-                const waLink = buildWaLink(p, totalKupon);
+                const pesan = buildPesan(p, totalKupon);
+                const waLink = buildWaLink(p, pesan);
                 const hasWa = Boolean(normalizeWaNumber(p.no_whatsapp));
                 return (
                   <TableRow key={p.id}>
@@ -331,6 +336,7 @@ export default async function TransaksiPage(props: {
                             <ExternalLink /> WA Manual
                           </a>
                         )}
+                        {hasWa && <CopyPesanButton pesan={pesan} />}
                       </div>
                     </TableCell>
                   </TableRow>
