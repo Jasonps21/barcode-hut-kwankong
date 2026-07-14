@@ -6,8 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { RupiahInput } from "@/components/ui/rupiah-input";
 import { Label } from "@/components/ui/label";
+import { Combobox } from "@/components/ui/combobox";
 import { hanziToPinyin } from "@/lib/pinyin";
-import { updatePesertaAction, type UpdatePesertaState } from "../../actions";
+import { daftarProvinsi, kotaUntukProvinsi, semuaKota } from "@/lib/wilayah";
+import { updatePesertaAction, createJenisUsahaAction, type UpdatePesertaState } from "../../actions";
 
 export interface EditPeserta {
   id: string;
@@ -17,13 +19,40 @@ export interface EditPeserta {
   no_whatsapp: string;
   nominal_donasi: number | string;
   metode_bayar: string | null;
+  kota_kabupaten: string | null;
+  provinsi: string | null;
+  jenis_usaha_id: string | null;
+  keterangan: string | null;
 }
 
-export function EditPesertaForm({ peserta }: { peserta: EditPeserta }) {
+export function EditPesertaForm({
+  peserta,
+  jenisUsahaOptions = [],
+}: {
+  peserta: EditPeserta;
+  jenisUsahaOptions?: { id: string; nama: string }[];
+}) {
   const [state, action, pending] = useActionState<UpdatePesertaState, FormData>(updatePesertaAction, undefined);
   const [namaHanzi, setNamaHanzi] = useState(peserta.nama_hanzi ?? "");
   const [metode, setMetode] = useState(peserta.metode_bayar ?? "");
   const pinyinPreview = useMemo(() => hanziToPinyin(namaHanzi), [namaHanzi]);
+
+  const [provinsi, setProvinsi] = useState(peserta.provinsi ?? "");
+  const [kotaKabupaten, setKotaKabupaten] = useState(peserta.kota_kabupaten ?? "");
+  const [jenisUsahaList, setJenisUsahaList] = useState(jenisUsahaOptions);
+  const [jenisUsahaId, setJenisUsahaId] = useState(peserta.jenis_usaha_id ?? "");
+
+  const kotaOptions = useMemo(
+    () => (provinsi ? kotaUntukProvinsi(provinsi) : semuaKota()),
+    [provinsi],
+  );
+
+  async function handleCreateJenisUsaha(nama: string) {
+    const result = await createJenisUsahaAction(nama);
+    if ("error" in result) return;
+    setJenisUsahaList((prev) => (prev.some((j) => j.id === result.id) ? prev : [...prev, result].sort((a, b) => a.nama.localeCompare(b.nama))));
+    setJenisUsahaId(result.id);
+  }
 
   return (
     <form action={action} className="space-y-6">
@@ -48,6 +77,50 @@ export function EditPesertaForm({ peserta }: { peserta: EditPeserta }) {
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="alamat">Alamat</Label>
           <Input id="alamat" name="alamat" defaultValue={peserta.alamat} required />
+        </div>
+        <div className="space-y-2">
+          <Label>Provinsi</Label>
+          <Combobox
+            name="provinsi"
+            options={daftarProvinsi.map((p) => ({ value: p, label: p }))}
+            value={provinsi}
+            onChange={(v) => {
+              setProvinsi(v);
+              setKotaKabupaten("");
+            }}
+            placeholder="Pilih provinsi…"
+            searchPlaceholder="Cari provinsi…"
+            emptyText="Provinsi tidak ditemukan."
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Kota / Kabupaten</Label>
+          <Combobox
+            name="kota_kabupaten"
+            options={kotaOptions.map((k) => ({ value: k, label: k }))}
+            value={kotaKabupaten}
+            onChange={setKotaKabupaten}
+            placeholder="Pilih kota/kabupaten…"
+            searchPlaceholder="Cari kota/kabupaten…"
+            emptyText="Kota/kabupaten tidak ditemukan."
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Jenis Usaha</Label>
+          <Combobox
+            name="jenis_usaha_id"
+            options={jenisUsahaList.map((j) => ({ value: j.id, label: j.nama }))}
+            value={jenisUsahaId}
+            onChange={setJenisUsahaId}
+            placeholder="Pilih jenis usaha…"
+            searchPlaceholder="Cari atau tambah jenis usaha…"
+            emptyText="Belum ada kategori, ketik untuk menambah."
+            onCreate={handleCreateJenisUsaha}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="keterangan">Keterangan (merk/tipe barang)</Label>
+          <Input id="keterangan" name="keterangan" defaultValue={peserta.keterangan ?? ""} placeholder="mis. TV LG, Genset Yamaha" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="nominal_donasi">Nominal Donasi</Label>

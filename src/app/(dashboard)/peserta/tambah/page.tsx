@@ -13,14 +13,20 @@ export default async function TambahPesertaPage() {
   // Untuk kasus "tidak mengambil kupon", admin perlu memilih kelompok manual
   // (kelompok tidak bisa ditentukan otomatis tanpa kupon).
   let kelompokOptions: { id: string; nama: string }[] = [];
+  const supabase = await createClient();
   if (isAdmin) {
-    const supabase = await createClient();
     const { data } = await supabase
       .from("kelompok")
       .select("id, nama")
       .order("nama", { ascending: true });
     kelompokOptions = (data ?? []) as { id: string; nama: string }[];
   }
+
+  const { data: jenisUsahaData } = await supabase
+    .from("jenis_usaha")
+    .select("id, nama")
+    .order("nama", { ascending: true });
+  const jenisUsahaOptions = (jenisUsahaData ?? []) as { id: string; nama: string }[];
 
   return (
     <div className="space-y-6">
@@ -34,7 +40,7 @@ export default async function TambahPesertaPage() {
           <CardDescription>Isi data lengkap, lalu scan/ketik nomor kupon (boleh lebih dari satu). Semua kupon harus dari kelompok yang sama.</CardDescription>
         </CardHeader>
         <CardContent>
-          <PesertaForm isAdmin={isAdmin} kelompokOptions={kelompokOptions} />
+          <PesertaForm isAdmin={isAdmin} kelompokOptions={kelompokOptions} jenisUsahaOptions={jenisUsahaOptions} />
         </CardContent>
       </Card>
     </div>

@@ -21,6 +21,8 @@ export const maxDuration = 60;
 interface PesertaRow {
   id: string; nama: string; nama_hanzi: string | null; pinyin: string | null;
   alamat: string;
+  kota_kabupaten: string | null; provinsi: string | null; keterangan: string | null;
+  jenis_usaha: { nama: string } | null;
   no_whatsapp: string; nominal_donasi: number | string;
   metode_bayar: string | null; bukti_transfer_path: string | null;
   nomor_tt: number | null; registered_at: string | null;
@@ -62,7 +64,7 @@ export default async function PesertaPage(props: {
   const query = supabase
     .from("peserta")
     .select(
-      "id, nama, nama_hanzi, pinyin, alamat, no_whatsapp, nominal_donasi, metode_bayar, bukti_transfer_path, nomor_tt, registered_at, wa_status, wa_sent_at, kelompok_id, kelompok(nama)",
+      "id, nama, nama_hanzi, pinyin, alamat, kota_kabupaten, provinsi, keterangan, jenis_usaha(nama), no_whatsapp, nominal_donasi, metode_bayar, bukti_transfer_path, nomor_tt, registered_at, wa_status, wa_sent_at, kelompok_id, kelompok(nama)",
       { count: "exact" },
     )
     .order("created_at", { ascending: false });
@@ -232,6 +234,19 @@ export default async function PesertaPage(props: {
                         </div>
                       )}
                       <div className="text-xs text-muted-foreground">{p.alamat}</div>
+                      {(p.kota_kabupaten || p.provinsi) && (
+                        <div className="text-xs text-muted-foreground">
+                          {[p.kota_kabupaten, p.provinsi].filter(Boolean).join(", ")}
+                        </div>
+                      )}
+                      {(p.jenis_usaha?.nama || p.keterangan) && (
+                        <div className="mt-1 flex flex-wrap items-center gap-1">
+                          {p.jenis_usaha?.nama && (
+                            <Badge variant="outline" className="text-[10px]">{p.jenis_usaha.nama}</Badge>
+                          )}
+                          {p.keterangan && <span className="text-xs text-muted-foreground">{p.keterangan}</span>}
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell>{p.kelompok?.nama ?? "-"}</TableCell>
                     <TableCell className="font-mono text-xs">{p.no_whatsapp || <span className="text-muted-foreground">-</span>}</TableCell>

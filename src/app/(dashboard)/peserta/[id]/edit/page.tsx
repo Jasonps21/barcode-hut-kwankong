@@ -19,16 +19,24 @@ export default async function EditPesertaPage(props: { params: Promise<{ id: str
 
   const { data: peserta } = await admin
     .from("peserta")
-    .select("id, nama, nama_hanzi, pinyin, alamat, no_whatsapp, nominal_donasi, metode_bayar, kelompok_id, kelompok(nama)")
+    .select("id, nama, nama_hanzi, pinyin, alamat, no_whatsapp, nominal_donasi, metode_bayar, kota_kabupaten, provinsi, jenis_usaha_id, keterangan, kelompok_id, kelompok(nama)")
     .eq("id", id)
     .single();
   if (!peserta) notFound();
   const p = peserta as unknown as {
     id: string; nama: string; nama_hanzi: string | null; pinyin: string | null;
     alamat: string; no_whatsapp: string; nominal_donasi: number | string;
-    metode_bayar: string | null; kelompok_id: string; kelompok: { nama: string } | null;
+    metode_bayar: string | null; kota_kabupaten: string | null; provinsi: string | null;
+    jenis_usaha_id: string | null; keterangan: string | null;
+    kelompok_id: string; kelompok: { nama: string } | null;
   };
   if (profile.role !== "admin" && p.kelompok_id !== profile.kelompok_id) notFound();
+
+  const { data: jenisUsahaData } = await admin
+    .from("jenis_usaha")
+    .select("id, nama")
+    .order("nama", { ascending: true });
+  const jenisUsahaOptions = (jenisUsahaData ?? []) as { id: string; nama: string }[];
 
   const { data: kuponData } = await admin
     .from("kupon")
@@ -55,7 +63,7 @@ export default async function EditPesertaPage(props: { params: Promise<{ id: str
           <CardDescription>Ubah data lalu simpan.</CardDescription>
         </CardHeader>
         <CardContent>
-          <EditPesertaForm peserta={p} />
+          <EditPesertaForm peserta={p} jenisUsahaOptions={jenisUsahaOptions} />
         </CardContent>
       </Card>
 

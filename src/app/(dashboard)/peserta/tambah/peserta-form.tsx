@@ -7,16 +7,20 @@ import { Input } from "@/components/ui/input";
 import { RupiahInput } from "@/components/ui/rupiah-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Combobox } from "@/components/ui/combobox";
 import { QrScanner } from "@/components/scanner/qr-scanner";
 import { hanziToPinyin } from "@/lib/pinyin";
-import { createPesertaAction, type CreatePesertaState } from "../actions";
+import { daftarProvinsi, kotaUntukProvinsi, semuaKota } from "@/lib/wilayah";
+import { createPesertaAction, createJenisUsahaAction, type CreatePesertaState } from "../actions";
 
 export function PesertaForm({
   isAdmin = false,
   kelompokOptions = [],
+  jenisUsahaOptions = [],
 }: {
   isAdmin?: boolean;
   kelompokOptions?: { id: string; nama: string }[];
+  jenisUsahaOptions?: { id: string; nama: string }[];
 }) {
   const [state, action, pending] = useActionState<CreatePesertaState, FormData>(
     createPesertaAction,
@@ -29,6 +33,23 @@ export function PesertaForm({
   const [metode, setMetode] = useState("");
   const [tanpaKupon, setTanpaKupon] = useState(false);
   const pinyinPreview = useMemo(() => hanziToPinyin(namaHanzi), [namaHanzi]);
+
+  const [provinsi, setProvinsi] = useState("");
+  const [kotaKabupaten, setKotaKabupaten] = useState("");
+  const [jenisUsahaList, setJenisUsahaList] = useState(jenisUsahaOptions);
+  const [jenisUsahaId, setJenisUsahaId] = useState("");
+
+  const kotaOptions = useMemo(
+    () => (provinsi ? kotaUntukProvinsi(provinsi) : semuaKota()),
+    [provinsi],
+  );
+
+  async function handleCreateJenisUsaha(nama: string) {
+    const result = await createJenisUsahaAction(nama);
+    if ("error" in result) return;
+    setJenisUsahaList((prev) => (prev.some((j) => j.id === result.id) ? prev : [...prev, result].sort((a, b) => a.nama.localeCompare(b.nama))));
+    setJenisUsahaId(result.id);
+  }
 
   function toggleTanpaKupon(checked: boolean) {
     setTanpaKupon(checked);
@@ -80,6 +101,50 @@ export function PesertaForm({
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="alamat">Alamat</Label>
           <Input id="alamat" name="alamat" required />
+        </div>
+        <div className="space-y-2">
+          <Label>Provinsi</Label>
+          <Combobox
+            name="provinsi"
+            options={daftarProvinsi.map((p) => ({ value: p, label: p }))}
+            value={provinsi}
+            onChange={(v) => {
+              setProvinsi(v);
+              setKotaKabupaten("");
+            }}
+            placeholder="Pilih provinsi…"
+            searchPlaceholder="Cari provinsi…"
+            emptyText="Provinsi tidak ditemukan."
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Kota / Kabupaten</Label>
+          <Combobox
+            name="kota_kabupaten"
+            options={kotaOptions.map((k) => ({ value: k, label: k }))}
+            value={kotaKabupaten}
+            onChange={setKotaKabupaten}
+            placeholder="Pilih kota/kabupaten…"
+            searchPlaceholder="Cari kota/kabupaten…"
+            emptyText="Kota/kabupaten tidak ditemukan."
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Jenis Usaha</Label>
+          <Combobox
+            name="jenis_usaha_id"
+            options={jenisUsahaList.map((j) => ({ value: j.id, label: j.nama }))}
+            value={jenisUsahaId}
+            onChange={setJenisUsahaId}
+            placeholder="Pilih jenis usaha…"
+            searchPlaceholder="Cari atau tambah jenis usaha…"
+            emptyText="Belum ada kategori, ketik untuk menambah."
+            onCreate={handleCreateJenisUsaha}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="keterangan">Keterangan (merk/tipe barang)</Label>
+          <Input id="keterangan" name="keterangan" placeholder="mis. TV LG, Genset Yamaha" />
         </div>
         <div className="space-y-2">
           <Label htmlFor="nominal_donasi">Nominal Donasi</Label>

@@ -23,6 +23,36 @@ export type CreatePesertaState = {
 
 interface KuponRow { id: string; nomor_kupon: string; status: string; kelompok_id: string }
 
+/** Dipanggil langsung dari combobox creatable saat user mengetik kategori jenis usaha baru. */
+export async function createJenisUsahaAction(
+  nama: string,
+): Promise<{ id: string; nama: string } | { error: string }> {
+  await requireProfile(["admin", "petugas_pendaftaran"]);
+  const trimmed = nama.trim();
+  if (!trimmed) return { error: "Nama jenis usaha wajib diisi." };
+
+  const admin = createAdminClient();
+
+  // Cegah duplikat/typo: cek dulu case-insensitive sebelum insert baru.
+  const { data: existing } = await admin
+    .from("jenis_usaha")
+    .select("id, nama")
+    .ilike("nama", trimmed)
+    .maybeSingle();
+  if (existing) return existing as { id: string; nama: string };
+
+  const { data, error } = await admin
+    .from("jenis_usaha")
+    .insert({ nama: trimmed })
+    .select("id, nama")
+    .single();
+  if (error || !data) return { error: `Gagal tambah jenis usaha: ${error?.message ?? "unknown"}` };
+
+  revalidatePath("/peserta");
+  revalidatePath("/peserta/tambah");
+  return data as { id: string; nama: string };
+}
+
 export async function createPesertaAction(
   _prev: CreatePesertaState,
   formData: FormData,
@@ -40,6 +70,10 @@ export async function createPesertaAction(
   const nominal_donasi = Number(nominalRaw.replace(/\D/g, ""));
   const metode_bayar = String(formData.get("metode_bayar") ?? "").trim();
   const buktiFile = formData.get("bukti") as File | null;
+  const kota_kabupaten = String(formData.get("kota_kabupaten") ?? "").trim();
+  const provinsi = String(formData.get("provinsi") ?? "").trim();
+  const jenisUsahaId = String(formData.get("jenis_usaha_id") ?? "").trim();
+  const keterangan = String(formData.get("keterangan") ?? "").trim();
   const tanpaKupon = formData.get("tanpa_kupon") != null;
   const kelompokManual = String(formData.get("kelompok_id") ?? "").trim();
   const kuponList = tanpaKupon
@@ -112,6 +146,10 @@ export async function createPesertaAction(
       pinyin: pinyin || null,
       alamat, no_whatsapp, nominal_donasi,
       metode_bayar,
+      kota_kabupaten: kota_kabupaten || null,
+      provinsi: provinsi || null,
+      jenis_usaha_id: jenisUsahaId || null,
+      keterangan: keterangan || null,
       registered_at: registeredAt,
       kelompok_id: kelompokId,
       wa_status: "pending",
@@ -250,6 +288,10 @@ export async function updatePesertaAction(
   const metodeRaw = String(formData.get("metode_bayar") ?? "").trim();
   const metode_bayar = metodeRaw === "cash" || metodeRaw === "transfer" ? metodeRaw : null;
   const buktiFile = formData.get("bukti") as File | null;
+  const kota_kabupaten = String(formData.get("kota_kabupaten") ?? "").trim();
+  const provinsi = String(formData.get("provinsi") ?? "").trim();
+  const jenisUsahaId = String(formData.get("jenis_usaha_id") ?? "").trim();
+  const keterangan = String(formData.get("keterangan") ?? "").trim();
 
   if (!id) return { error: "Peserta tidak valid." };
   if (!nama) return { error: "Nama wajib diisi." };
@@ -271,6 +313,10 @@ export async function updatePesertaAction(
     no_whatsapp,
     nominal_donasi: Number.isFinite(nominal_donasi) ? nominal_donasi : 0,
     metode_bayar,
+    kota_kabupaten: kota_kabupaten || null,
+    provinsi: provinsi || null,
+    jenis_usaha_id: jenisUsahaId || null,
+    keterangan: keterangan || null,
   };
 
   if (buktiFile && buktiFile.size > 0) {

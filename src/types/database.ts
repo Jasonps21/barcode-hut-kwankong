@@ -13,6 +13,12 @@ export interface Kelompok {
   created_at: string;
 }
 
+export interface JenisUsaha {
+  id: string;
+  nama: string;
+  created_at: string;
+}
+
 export interface Profile {
   id: string;
   nama: string;
@@ -36,6 +42,10 @@ export interface Peserta {
   registered_at: string | null;
   nomor_tt: number | null;
   kelompok_id: string;
+  kota_kabupaten: string | null;
+  provinsi: string | null;
+  jenis_usaha_id: string | null;
+  keterangan: string | null;
   wa_status: WaStatus;
   wa_sent_at: string | null;
   wa_attempt_count: number;
