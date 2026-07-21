@@ -1,7 +1,10 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { hasScanAccess } from "@/lib/scan-auth";
+import { PinGate } from "./pin-form";
 import { ScanPenukaranClient } from "./scan-client";
 
-export default function ScanPenukaranPage() {
+export default async function ScanPenukaranPage() {
+  const unlocked = await hasScanAccess();
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4 md:p-8">
       <div>
@@ -10,11 +13,13 @@ export default function ScanPenukaranPage() {
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Scanner QR</CardTitle>
-          <CardDescription>Arahkan kamera ke kupon, atau ketik nomor manual.</CardDescription>
+          <CardTitle>{unlocked ? "Scanner QR" : "Akses Terkunci"}</CardTitle>
+          <CardDescription>
+            {unlocked ? "Arahkan kamera ke kupon, atau ketik nomor manual." : "Masukkan PIN untuk mulai scan."}
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <ScanPenukaranClient />
+          {unlocked ? <ScanPenukaranClient /> : <PinGate />}
         </CardContent>
       </Card>
     </div>

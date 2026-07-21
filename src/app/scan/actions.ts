@@ -1,7 +1,9 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { redirect } from "next/navigation";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hasScanAccess } from "@/lib/scan-auth";
 
 export interface LookupResult {
   status:
@@ -18,6 +20,7 @@ export interface LookupResult {
 }
 
 export async function lookupKupon(nomorKupon: string): Promise<LookupResult> {
+  if (!(await hasScanAccess())) redirect("/scan");
   const v = nomorKupon.trim().toUpperCase();
   if (!v) return { status: "not_found", nomor_kupon: v };
 
@@ -55,6 +58,7 @@ export async function lookupKupon(nomorKupon: string): Promise<LookupResult> {
 }
 
 export async function redeemKupon(kuponId: string): Promise<{ ok: boolean; error?: string }> {
+  if (!(await hasScanAccess())) redirect("/scan");
   const admin = createAdminClient();
 
   const { data: existing } = await admin
