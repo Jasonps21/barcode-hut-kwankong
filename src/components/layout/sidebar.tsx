@@ -19,7 +19,7 @@ const NAV: NavItem[] = [
   { href: "/transaksi", label: "Transaksi", icon: ReceiptText, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/scan-pendaftaran", label: "Scan Pendaftaran", icon: ScanLine, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/laporan-saya", label: "Laporan Saya", icon: ClipboardList, roles: ["admin", "petugas_pendaftaran"] },
-  { href: "/scan-penukaran", label: "Scan Penukaran", icon: ScanBarcode, roles: ["admin", "petugas_distribusi"] },
+  { href: "/scan", label: "Scan Penukaran", icon: ScanBarcode, roles: ["admin", "petugas_distribusi"] },
   { href: "/wa-log", label: "Log WhatsApp", icon: MessageSquare, roles: ["admin"] },
   { href: "/log-error", label: "Log Error", icon: AlertTriangle, roles: ["admin"] },
   { href: "/log-aktivitas", label: "Log Aktivitas", icon: History, roles: ["admin"] },

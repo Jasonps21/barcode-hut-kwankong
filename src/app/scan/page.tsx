@@ -1,11 +1,9 @@
-import { requireProfile } from "@/lib/auth";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScanPenukaranClient } from "./scan-client";
 
-export default async function ScanPenukaranPage() {
-  await requireProfile(["admin", "petugas_distribusi"]);
+export default function ScanPenukaranPage() {
   return (
-    <div className="space-y-6">
+    <div className="mx-auto max-w-2xl space-y-6 p-4 md:p-8">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Scan Penukaran</h1>
         <p className="text-sm text-muted-foreground">Scan QR kupon peserta untuk konfirmasi pengambilan bingkisan.</p>

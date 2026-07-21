@@ -1,7 +1,6 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 export interface LookupResult {
@@ -19,7 +18,6 @@ export interface LookupResult {
 }
 
 export async function lookupKupon(nomorKupon: string): Promise<LookupResult> {
-  await requireProfile(["admin", "petugas_distribusi"]);
   const v = nomorKupon.trim().toUpperCase();
   if (!v) return { status: "not_found", nomor_kupon: v };
 
@@ -57,7 +55,6 @@ export async function lookupKupon(nomorKupon: string): Promise<LookupResult> {
 }
 
 export async function redeemKupon(kuponId: string): Promise<{ ok: boolean; error?: string }> {
-  const profile = await requireProfile(["admin", "petugas_distribusi"]);
   const admin = createAdminClient();
 
   const { data: existing } = await admin
@@ -76,20 +73,18 @@ export async function redeemKupon(kuponId: string): Promise<{ ok: boolean; error
     .update({
       status: "redeemed",
       redeemed_at: new Date().toISOString(),
-      redeemed_by: profile.id,
     })
     .eq("id", kuponId)
     .eq("status", "assigned");
   if (error) return { ok: false, error: error.message };
 
   await admin.from("log_aktivitas").insert({
-    user_id: profile.id,
     aksi: "redeem_kupon",
     tabel_terkait: "kupon",
     record_id: kuponId,
   });
 
   revalidatePath("/dashboard");
-  revalidatePath("/scan-penukaran");
+  revalidatePath("/scan");
   return { ok: true };
 }
