@@ -55,6 +55,7 @@ export default async function CariUsahaPage(props: {
     const { data } = await admin
       .from("peserta")
       .select("id, nama, alamat, kota_kabupaten, provinsi, no_whatsapp, keterangan, jenis_usaha(nama)")
+      .not("jenis_usaha_id", "is", null)
       .or(orParts.join(","))
       .order("nama")
       .limit(100);
