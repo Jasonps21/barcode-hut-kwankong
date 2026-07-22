@@ -3,5 +3,5 @@ import { getCurrentProfile } from "@/lib/auth";
 
 export default async function Home() {
   const profile = await getCurrentProfile();
-  redirect(profile ? "/dashboard" : "/login");
+  redirect(profile ? "/dashboard" : "/cari-usaha");
 }
