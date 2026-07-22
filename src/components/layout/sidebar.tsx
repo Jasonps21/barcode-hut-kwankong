@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Users, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog, MessageSquare, ClipboardList, ReceiptText, AlertTriangle, History, Ticket, Settings,
+  LayoutDashboard, Users, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog, MessageSquare, ClipboardList, ReceiptText, AlertTriangle, History, Ticket, Settings, Store,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types/database";
@@ -16,6 +16,7 @@ const NAV: NavItem[] = [
   { href: "/kupon", label: "Cek Kupon", icon: Ticket, roles: ["admin"] },
   { href: "/peserta", label: "Peserta", icon: Users, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/peserta/tambah", label: "Tambah Peserta", icon: UserPlus, roles: ["admin", "petugas_pendaftaran"] },
+  { href: "/jenis-usaha", label: "Jenis Usaha", icon: Store, roles: ["admin"] },
   { href: "/transaksi", label: "Transaksi", icon: ReceiptText, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/scan-pendaftaran", label: "Scan Pendaftaran", icon: ScanLine, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/laporan-saya", label: "Laporan Saya", icon: ClipboardList, roles: ["admin", "petugas_pendaftaran"] },

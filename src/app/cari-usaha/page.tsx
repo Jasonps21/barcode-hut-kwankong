@@ -43,7 +43,13 @@ export default async function CariUsahaPage(props: {
     const { data: jenisUsahaMatch } = await admin.from("jenis_usaha").select("id").ilike("nama", like);
     const jenisUsahaIds = (jenisUsahaMatch ?? []).map((j) => j.id as string);
 
-    const orParts = [`keterangan.ilike.${like}`];
+    const orParts = [
+      `keterangan.ilike.${like}`,
+      `nama.ilike.${like}`,
+      `alamat.ilike.${like}`,
+      `kota_kabupaten.ilike.${like}`,
+      `provinsi.ilike.${like}`,
+    ];
     if (jenisUsahaIds.length) orParts.push(`jenis_usaha_id.in.(${jenisUsahaIds.join(",")})`);
 
     const { data } = await admin
@@ -77,7 +83,7 @@ export default async function CariUsahaPage(props: {
 
           <p className="cu-subhead">
             Temukan usaha & jasa milik sesama peserta, lalu hubungi langsung lewat WhatsApp.
-            Cari berdasarkan jenis usaha atau merk/barang yang dijual — sarana saling bantu promosi.
+            Cari berdasarkan jenis usaha, merk/barang, nama toko, alamat, atau kota — sarana saling bantu promosi.
           </p>
 
           <form className="cu-search-form">
@@ -87,7 +93,7 @@ export default async function CariUsahaPage(props: {
                 type="text"
                 name="q"
                 defaultValue={q}
-                placeholder="Contoh: Furniture, Electronic, TV LG..."
+                placeholder="Contoh: Furniture, TV LG, nama toko, kota..."
                 className="cu-search-input"
                 autoFocus
               />
