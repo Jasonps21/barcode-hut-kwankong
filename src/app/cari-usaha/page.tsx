@@ -26,6 +26,21 @@ interface HasilRow {
 
 const TITLE = "CARI USAHA";
 
+const STOPWORDS = new Set([
+  "di", "ke", "dari", "dan", "yang", "untuk", "atau",
+  "kota", "kab", "kabupaten", "kec", "kecamatan", "provinsi", "prov", "daerah", "wilayah",
+]);
+
+function tokenize(input: string): string[] {
+  const words = input
+    .toLowerCase()
+    .split(/\s+/)
+    .map((w) => w.trim())
+    .filter(Boolean);
+  const meaningful = words.filter((w) => !STOPWORDS.has(w));
+  return meaningful.length ? meaningful : words;
+}
+
 export default async function CariUsahaPage(props: {
   searchParams: Promise<{ q?: string }>;
 }) {
@@ -38,28 +53,33 @@ export default async function CariUsahaPage(props: {
 
   let rows: HasilRow[] = [];
   if (q) {
-    const like = `%${q}%`;
+    const tokens = tokenize(q);
 
-    const { data: jenisUsahaMatch } = await admin.from("jenis_usaha").select("id").ilike("nama", like);
-    const jenisUsahaIds = (jenisUsahaMatch ?? []).map((j) => j.id as string);
-
-    const orParts = [
-      `keterangan.ilike.${like}`,
-      `nama.ilike.${like}`,
-      `alamat.ilike.${like}`,
-      `kota_kabupaten.ilike.${like}`,
-      `provinsi.ilike.${like}`,
-    ];
-    if (jenisUsahaIds.length) orParts.push(`jenis_usaha_id.in.(${jenisUsahaIds.join(",")})`);
-
-    const { data } = await admin
+    let query = admin
       .from("peserta")
       .select("id, nama, alamat, kota_kabupaten, provinsi, no_whatsapp, keterangan, jenis_usaha(nama)")
-      .not("jenis_usaha_id", "is", null)
-      .or(orParts.join(","))
-      .order("nama")
-      .limit(100);
+      .not("jenis_usaha_id", "is", null);
 
+    // Setiap kata harus cocok di suatu tempat (AND antar kata, OR antar kolom per kata) —
+    // supaya "furniture makassar" menemukan yang jenis usahanya Furniture DAN lokasinya Makassar.
+    for (const token of tokens) {
+      const like = `%${token}%`;
+      const { data: jenisUsahaMatch } = await admin.from("jenis_usaha").select("id").ilike("nama", like);
+      const jenisUsahaIds = (jenisUsahaMatch ?? []).map((j) => j.id as string);
+
+      const orParts = [
+        `keterangan.ilike.${like}`,
+        `nama.ilike.${like}`,
+        `alamat.ilike.${like}`,
+        `kota_kabupaten.ilike.${like}`,
+        `provinsi.ilike.${like}`,
+      ];
+      if (jenisUsahaIds.length) orParts.push(`jenis_usaha_id.in.(${jenisUsahaIds.join(",")})`);
+
+      query = query.or(orParts.join(","));
+    }
+
+    const { data } = await query.order("nama").limit(100);
     rows = (data ?? []) as unknown as HasilRow[];
   }
 
