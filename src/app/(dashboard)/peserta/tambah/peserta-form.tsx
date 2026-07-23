@@ -12,6 +12,7 @@ import { QrScanner } from "@/components/scanner/qr-scanner";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { daftarProvinsi, kotaUntukProvinsi, semuaKota } from "@/lib/wilayah";
 import { createPesertaAction, createJenisUsahaAction, type CreatePesertaState } from "../actions";
+import { NomorUsahaEditor, emptyNomorUsahaRow, type NomorUsahaRow } from "../nomor-usaha-editor";
 
 export function PesertaForm({
   isAdmin = false,
@@ -38,6 +39,8 @@ export function PesertaForm({
   const [kotaKabupaten, setKotaKabupaten] = useState("");
   const [jenisUsahaList, setJenisUsahaList] = useState(jenisUsahaOptions);
   const [jenisUsahaId, setJenisUsahaId] = useState("");
+  const [noWhatsapp, setNoWhatsapp] = useState("");
+  const [nomorUsaha, setNomorUsaha] = useState<NomorUsahaRow[]>([emptyNomorUsahaRow()]);
 
   const kotaOptions = useMemo(
     () => (provinsi ? kotaUntukProvinsi(provinsi) : semuaKota()),
@@ -78,7 +81,15 @@ export function PesertaForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor="no_whatsapp">No WhatsApp</Label>
-          <Input id="no_whatsapp" name="no_whatsapp" inputMode="tel" placeholder="08xxxxxxxxxx" required />
+          <Input
+            id="no_whatsapp"
+            name="no_whatsapp"
+            inputMode="tel"
+            placeholder="08xxxxxxxxxx"
+            value={noWhatsapp}
+            onChange={(e) => setNoWhatsapp(e.target.value)}
+            required
+          />
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="nama_hanzi">Nama Hanzi (opsional)</Label>
@@ -169,6 +180,8 @@ export function PesertaForm({
           </div>
         )}
       </div>
+
+      <NomorUsahaEditor noWhatsapp={noWhatsapp} rows={nomorUsaha} onChange={setNomorUsaha} />
 
       <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
         <div className="flex flex-wrap items-center justify-between gap-2">

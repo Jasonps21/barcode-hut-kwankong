@@ -45,6 +45,13 @@ export default async function EditPesertaPage(props: { params: Promise<{ id: str
     .order("nomor_kupon");
   const kupons = (kuponData ?? []) as Array<{ id: string; nomor_kupon: string; status: string }>;
 
+  const { data: nomorUsahaData } = await admin
+    .from("peserta_nomor_usaha")
+    .select("label, nomor, sama_dengan_wa")
+    .eq("peserta_id", id)
+    .order("urutan");
+  const nomorUsahaAwal = (nomorUsahaData ?? []) as Array<{ label: string | null; nomor: string; sama_dengan_wa: boolean }>;
+
   return (
     <div className="space-y-6">
       <div className="flex items-center gap-3">
@@ -63,7 +70,7 @@ export default async function EditPesertaPage(props: { params: Promise<{ id: str
           <CardDescription>Ubah data lalu simpan.</CardDescription>
         </CardHeader>
         <CardContent>
-          <EditPesertaForm peserta={p} jenisUsahaOptions={jenisUsahaOptions} />
+          <EditPesertaForm peserta={p} jenisUsahaOptions={jenisUsahaOptions} nomorUsahaAwal={nomorUsahaAwal} />
         </CardContent>
       </Card>
 

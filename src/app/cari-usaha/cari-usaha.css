@@ -388,6 +388,12 @@
   border-top: 1px dashed var(--cu-line);
 }
 
+.cu-card-footer-multi {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
 .cu-wa-btn {
   display: inline-flex;
   align-items: center;

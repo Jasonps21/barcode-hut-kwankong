@@ -16,6 +16,43 @@ async function assignNomorTT(admin: ReturnType<typeof createAdminClient>, pesert
   return Number.isFinite(n) && n > 0 ? n : null;
 }
 
+interface NomorUsahaInput {
+  label?: string;
+  nomor?: string;
+  samaWa?: boolean;
+}
+
+/** Ganti seluruh nomor usaha milik peserta sesuai isian form (hapus lalu insert ulang). */
+async function syncNomorUsaha(
+  admin: ReturnType<typeof createAdminClient>,
+  pesertaId: string,
+  noWhatsapp: string,
+  rowsJson: string,
+): Promise<void> {
+  let raw: NomorUsahaInput[] = [];
+  try {
+    const parsed = JSON.parse(rowsJson);
+    if (Array.isArray(parsed)) raw = parsed;
+  } catch {
+    raw = [];
+  }
+
+  const rows = raw
+    .map((r, i) => ({
+      peserta_id: pesertaId,
+      label: String(r.label ?? "").trim() || null,
+      nomor: r.samaWa ? noWhatsapp.trim() : String(r.nomor ?? "").trim(),
+      sama_dengan_wa: !!r.samaWa,
+      urutan: i,
+    }))
+    .filter((r) => r.nomor);
+
+  await admin.from("peserta_nomor_usaha").delete().eq("peserta_id", pesertaId);
+  if (rows.length) {
+    await admin.from("peserta_nomor_usaha").insert(rows);
+  }
+}
+
 export type CreatePesertaState = {
   error?: string;
   success?: string;
@@ -74,6 +111,7 @@ export async function createPesertaAction(
   const provinsi = String(formData.get("provinsi") ?? "").trim();
   const jenisUsahaId = String(formData.get("jenis_usaha_id") ?? "").trim();
   const keterangan = String(formData.get("keterangan") ?? "").trim();
+  const nomorUsahaJson = String(formData.get("nomor_usaha_json") ?? "[]");
   const tanpaKupon = formData.get("tanpa_kupon") != null;
   const kelompokManual = String(formData.get("kelompok_id") ?? "").trim();
   const kuponList = tanpaKupon
@@ -160,6 +198,8 @@ export async function createPesertaAction(
   if (pErr || !pesertaData) return { error: `Gagal simpan peserta: ${pErr?.message ?? "unknown"}` };
 
   const pesertaId = (pesertaData as { id: string }).id;
+
+  await syncNomorUsaha(admin, pesertaId, no_whatsapp, nomorUsahaJson);
 
   // Upload bukti transfer (opsional). Kalau gagal, batalkan peserta.
   if (buktiFile && buktiFile.size > 0) {
@@ -292,6 +332,7 @@ export async function updatePesertaAction(
   const provinsi = String(formData.get("provinsi") ?? "").trim();
   const jenisUsahaId = String(formData.get("jenis_usaha_id") ?? "").trim();
   const keterangan = String(formData.get("keterangan") ?? "").trim();
+  const nomorUsahaJson = String(formData.get("nomor_usaha_json") ?? "[]");
 
   if (!id) return { error: "Peserta tidak valid." };
   if (!nama) return { error: "Nama wajib diisi." };
@@ -330,6 +371,8 @@ export async function updatePesertaAction(
 
   const { error } = await admin.from("peserta").update(payload).eq("id", id);
   if (error) return { error: `Gagal simpan: ${error.message}` };
+
+  await syncNomorUsaha(admin, id, no_whatsapp, nomorUsahaJson);
 
   await admin.from("log_aktivitas").insert({
     user_id: profile.id,

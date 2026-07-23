@@ -13,15 +13,20 @@ export const metadata = {
   description: "Direktori usaha & merk warga — cari lalu hubungi langsung lewat WhatsApp.",
 };
 
+interface NomorUsahaRow {
+  label: string | null;
+  nomor: string;
+}
+
 interface HasilRow {
   id: string;
   nama: string;
   alamat: string;
   kota_kabupaten: string | null;
   provinsi: string | null;
-  no_whatsapp: string;
   keterangan: string | null;
   jenis_usaha: { nama: string } | null;
+  peserta_nomor_usaha: NomorUsahaRow[];
 }
 
 const TITLE = "CARI USAHA";
@@ -57,7 +62,9 @@ export default async function CariUsahaPage(props: {
 
     let query = admin
       .from("peserta")
-      .select("id, nama, alamat, kota_kabupaten, provinsi, no_whatsapp, keterangan, jenis_usaha(nama)")
+      .select(
+        "id, nama, alamat, kota_kabupaten, provinsi, keterangan, jenis_usaha(nama), peserta_nomor_usaha(label, nomor)",
+      )
       .not("jenis_usaha_id", "is", null);
 
     // Setiap kata harus cocok di suatu tempat (AND antar kata, OR antar kolom per kata) —
@@ -79,7 +86,10 @@ export default async function CariUsahaPage(props: {
       query = query.or(orParts.join(","));
     }
 
-    const { data } = await query.order("nama").limit(100);
+    const { data } = await query
+      .order("nama")
+      .order("urutan", { referencedTable: "peserta_nomor_usaha" })
+      .limit(100);
     rows = (data ?? []) as unknown as HasilRow[];
   }
 
@@ -195,7 +205,7 @@ export default async function CariUsahaPage(props: {
             {rows.length > 0 && (
               <div className="cu-list">
                 {rows.map((r, i) => {
-                  const waTarget = normalizeWaNumber(r.no_whatsapp);
+                  const nomorUsaha = r.peserta_nomor_usaha ?? [];
                   const tabCode = (r.jenis_usaha?.nama ?? r.nama).slice(0, 2).toUpperCase();
                   return (
                     <article
@@ -218,23 +228,30 @@ export default async function CariUsahaPage(props: {
                           )}
                         </span>
                       </div>
-                      <div className="cu-card-footer">
-                        {waTarget ? (
-                          <a
-                            href={`https://wa.me/${waTarget}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="cu-wa-btn"
-                          >
-                            <Phone className="h-3.5 w-3.5" /> {r.no_whatsapp}
-                          </a>
-                        ) : (
-                          r.no_whatsapp && (
-                            <span className="cu-wa-static">
-                              <Phone className="h-3.5 w-3.5" /> {r.no_whatsapp}
-                            </span>
-                          )
+                      <div className="cu-card-footer cu-card-footer-multi">
+                        {nomorUsaha.length === 0 && (
+                          <span className="cu-wa-static">Kontak belum tersedia</span>
                         )}
+                        {nomorUsaha.map((n, ni) => {
+                          const waTarget = normalizeWaNumber(n.nomor);
+                          return waTarget ? (
+                            <a
+                              key={ni}
+                              href={`https://wa.me/${waTarget}`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="cu-wa-btn"
+                            >
+                              <Phone className="h-3.5 w-3.5" /> {n.label ? `${n.label}: ` : ""}
+                              {n.nomor}
+                            </a>
+                          ) : (
+                            <span key={ni} className="cu-wa-static">
+                              <Phone className="h-3.5 w-3.5" /> {n.label ? `${n.label}: ` : ""}
+                              {n.nomor}
+                            </span>
+                          );
+                        })}
                       </div>
                     </article>
                   );

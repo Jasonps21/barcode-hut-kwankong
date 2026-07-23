@@ -10,6 +10,7 @@ import { Combobox } from "@/components/ui/combobox";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { daftarProvinsi, kotaUntukProvinsi, semuaKota } from "@/lib/wilayah";
 import { updatePesertaAction, createJenisUsahaAction, type UpdatePesertaState } from "../../actions";
+import { NomorUsahaEditor, emptyNomorUsahaRow, type NomorUsahaRow } from "../../nomor-usaha-editor";
 
 export interface EditPeserta {
   id: string;
@@ -25,12 +26,20 @@ export interface EditPeserta {
   keterangan: string | null;
 }
 
+export interface EditNomorUsaha {
+  label: string | null;
+  nomor: string;
+  sama_dengan_wa: boolean;
+}
+
 export function EditPesertaForm({
   peserta,
   jenisUsahaOptions = [],
+  nomorUsahaAwal = [],
 }: {
   peserta: EditPeserta;
   jenisUsahaOptions?: { id: string; nama: string }[];
+  nomorUsahaAwal?: EditNomorUsaha[];
 }) {
   const [state, action, pending] = useActionState<UpdatePesertaState, FormData>(updatePesertaAction, undefined);
   const [namaHanzi, setNamaHanzi] = useState(peserta.nama_hanzi ?? "");
@@ -41,6 +50,12 @@ export function EditPesertaForm({
   const [kotaKabupaten, setKotaKabupaten] = useState(peserta.kota_kabupaten ?? "");
   const [jenisUsahaList, setJenisUsahaList] = useState(jenisUsahaOptions);
   const [jenisUsahaId, setJenisUsahaId] = useState(peserta.jenis_usaha_id ?? "");
+  const [noWhatsapp, setNoWhatsapp] = useState(peserta.no_whatsapp ?? "");
+  const [nomorUsaha, setNomorUsaha] = useState<NomorUsahaRow[]>(
+    nomorUsahaAwal.length
+      ? nomorUsahaAwal.map((n) => ({ label: n.label ?? "", nomor: n.nomor, samaWa: n.sama_dengan_wa }))
+      : [emptyNomorUsahaRow()],
+  );
 
   const kotaOptions = useMemo(
     () => (provinsi ? kotaUntukProvinsi(provinsi) : semuaKota()),
@@ -65,7 +80,14 @@ export function EditPesertaForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor="no_whatsapp">No WhatsApp</Label>
-          <Input id="no_whatsapp" name="no_whatsapp" inputMode="tel" defaultValue={peserta.no_whatsapp} placeholder="08xxxxxxxxxx (boleh kosong)" />
+          <Input
+            id="no_whatsapp"
+            name="no_whatsapp"
+            inputMode="tel"
+            value={noWhatsapp}
+            onChange={(e) => setNoWhatsapp(e.target.value)}
+            placeholder="08xxxxxxxxxx (boleh kosong)"
+          />
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="nama_hanzi">Nama Hanzi (opsional)</Label>
@@ -145,6 +167,8 @@ export function EditPesertaForm({
           </div>
         )}
       </div>
+
+      <NomorUsahaEditor noWhatsapp={noWhatsapp} rows={nomorUsaha} onChange={setNomorUsaha} />
 
       {state?.error && <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error}</div>}
       {state?.success && <div className="rounded-md bg-emerald-500/10 px-3 py-2 text-sm text-emerald-700 dark:text-emerald-400">{state.success}</div>}
