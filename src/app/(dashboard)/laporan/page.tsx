@@ -1,4 +1,4 @@
-import { Banknote, Download, Ticket, Wallet } from "lucide-react";
+import { Banknote, Download, FileSpreadsheet, FileText, Ticket, Wallet } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -9,7 +9,6 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatJamWITA, formatRupiah, formatTanggalWITA } from "@/lib/utils";
-import { exportPesertaCsv, exportUangMasukCsv } from "./actions";
 
 interface KelompokRow {
   id: string; nama: string; prefix: string;
@@ -121,9 +120,12 @@ export default async function LaporanPage(props: {
           <h1 className="text-3xl font-bold tracking-tight">Laporan</h1>
           <p className="text-sm text-muted-foreground">Rekap uang masuk, kupon keluar, dan statistik per kelompok.</p>
         </div>
-        <form action={exportPesertaCsv}>
-          <Button type="submit" variant="outline"><Download /> Export Semua Peserta</Button>
-        </form>
+        <a
+          href="/api/laporan/peserta"
+          className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&_svg]:size-4"
+        >
+          <Download /> Export Semua Peserta
+        </a>
       </div>
 
       {/* ---------- Filter ---------- */}
@@ -172,12 +174,23 @@ export default async function LaporanPage(props: {
               Registrasi {metode !== "all" ? `(${metode})` : ""}{from || to ? ` ${from || "…"} s/d ${to || "…"}` : " (semua waktu)"}.
             </CardDescription>
           </div>
-          <form action={exportUangMasukCsv}>
-            <input type="hidden" name="from" value={from} />
-            <input type="hidden" name="to" value={to} />
-            <input type="hidden" name="metode" value={metode} />
-            <Button type="submit" variant="outline" size="sm"><Download /> Export CSV</Button>
-          </form>
+          <div className="flex flex-wrap gap-2">
+            {(
+              [
+                { format: "csv", label: "CSV", icon: <Download className="h-3.5 w-3.5" /> },
+                { format: "xlsx", label: "Excel", icon: <FileSpreadsheet className="h-3.5 w-3.5" /> },
+                { format: "pdf", label: "PDF", icon: <FileText className="h-3.5 w-3.5" /> },
+              ] as const
+            ).map((f) => (
+              <a
+                key={f.format}
+                href={`/api/laporan/uang-masuk?format=${f.format}&from=${from}&to=${to}&metode=${metode}`}
+                className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+              >
+                {f.icon} {f.label}
+              </a>
+            ))}
+          </div>
         </CardHeader>
         <CardContent className="p-0">
           <Table>

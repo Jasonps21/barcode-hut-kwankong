@@ -45,3 +45,8 @@ next-env.d.ts
 
 .vercel
 .env*
+
+# tooling lokal / auto-generated oleh skills manager — bukan bagian dari kode aplikasi
+.claude/skills/
+.mcp.json
+.agents/skills/**/CHANGELOG.md
