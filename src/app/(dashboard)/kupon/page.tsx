@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, Search, Ticket } from "lucide-react";
+import { ChevronLeft, ChevronRight, RotateCcw, Search, Ticket } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -8,10 +8,13 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { formatTanggalJamWITA } from "@/lib/utils";
 import type { KuponStatus } from "@/types/database";
+import { resetRedeemKuponAction } from "./actions";
 
 interface KuponRow {
+  id: string;
   nomor_kupon: string;
   status: KuponStatus;
   assigned_at: string | null;
@@ -77,7 +80,7 @@ export default async function KuponPage(props: {
   // Daftar kupon (dengan filter & paging).
   let listQuery = supabase
     .from("kupon")
-    .select("nomor_kupon, status, assigned_at, redeemed_at, peserta:peserta_id(nama, nomor_tt)", { count: "exact" })
+    .select("id, nomor_kupon, status, assigned_at, redeemed_at, peserta:peserta_id(nama, nomor_tt)", { count: "exact" })
     .order("nomor_kupon", { ascending: true });
   if (selectedKelompok) listQuery = listQuery.eq("kelompok_id", selectedKelompok);
   if (status !== "all") listQuery = listQuery.eq("status", status);
@@ -197,7 +200,10 @@ export default async function KuponPage(props: {
           <Card>
             <CardHeader>
               <CardTitle className="flex items-center gap-2"><Ticket className="h-5 w-5" /> Daftar Kupon</CardTitle>
-              <CardDescription>Menampilkan {firstShown}–{lastShown} dari {total} kupon.</CardDescription>
+              <CardDescription>
+                Menampilkan {firstShown}–{lastShown} dari {total} kupon. Kupon yang sudah ditukar bisa dibatalkan
+                di kolom Aksi bila terjadi salah scan — kupon kembali berstatus terassign dan bisa discan ulang.
+              </CardDescription>
             </CardHeader>
             <CardContent className="p-0">
               <Table>
@@ -208,18 +214,19 @@ export default async function KuponPage(props: {
                     <TableHead>Peserta</TableHead>
                     <TableHead>Waktu Assign</TableHead>
                     <TableHead>Waktu Tukar</TableHead>
+                    <TableHead className="text-right">Aksi</TableHead>
                   </TableRow>
                 </TableHeader>
                 <TableBody>
                   {rows.length === 0 && (
                     <TableRow>
-                      <TableCell colSpan={5} className="py-10 text-center text-muted-foreground">
+                      <TableCell colSpan={6} className="py-10 text-center text-muted-foreground">
                         {q || status !== "all" ? "Tidak ada kupon yang cocok dengan filter." : "Belum ada kupon."}
                       </TableCell>
                     </TableRow>
                   )}
                   {rows.map((k) => (
-                    <TableRow key={k.nomor_kupon}>
+                    <TableRow key={k.id}>
                       <TableCell className="font-mono font-medium">{k.nomor_kupon}</TableCell>
                       <TableCell>{statusBadge(k.status)}</TableCell>
                       <TableCell>
@@ -236,6 +243,24 @@ export default async function KuponPage(props: {
                       </TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatTanggalJamWITA(k.assigned_at)}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs text-muted-foreground">{formatTanggalJamWITA(k.redeemed_at)}</TableCell>
+                      <TableCell className="text-right">
+                        {k.status === "redeemed" ? (
+                          <form action={resetRedeemKuponAction}>
+                            <input type="hidden" name="kupon_id" value={k.id} />
+                            <ConfirmButton
+                              type="submit"
+                              variant="ghost"
+                              size="sm"
+                              message={`Batalkan penukaran kupon ${k.nomor_kupon}${k.peserta ? ` (${k.peserta.nama})` : ""}?\n\nKupon akan kembali berstatus "terassign" dan bisa discan ulang di konter. Aksi ini tercatat di Log Aktivitas.`}
+                              className="h-7 gap-1 px-2 text-destructive hover:bg-destructive/10"
+                            >
+                              <RotateCcw /> Batalkan
+                            </ConfirmButton>
+                          </form>
+                        ) : (
+                          <span className="text-xs text-muted-foreground">-</span>
+                        )}
+                      </TableCell>
                     </TableRow>
                   ))}
                 </TableBody>

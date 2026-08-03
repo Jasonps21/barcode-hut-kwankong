@@ -19,6 +19,7 @@ const AKSI_LABEL: Record<string, string> = {
   register_peserta_impor: "Daftar via Scan",
   create_kelompok: "Tambah Kelompok",
   redeem_kupon: "Tukar Kupon",
+  batal_redeem_kupon: "Batal Tukar Kupon",
 };
 
 function fmtDateTime(iso: string): string {
@@ -27,8 +28,16 @@ function fmtDateTime(iso: string): string {
 
 function aksiBadge(aksi: string) {
   const label = AKSI_LABEL[aksi] ?? aksi;
-  const variant = aksi.startsWith("update") ? "warning" : aksi.startsWith("create") || aksi.startsWith("register") ? "success" : "secondary";
-  return <Badge variant={variant as "warning" | "success" | "secondary"}>{label}</Badge>;
+  // Pembatalan ditandai merah supaya menonjol saat audit — itu aksi yang
+  // mengembalikan data, jadi harus gampang dicari di antara log biasa.
+  const variant = aksi.startsWith("batal")
+    ? "destructive"
+    : aksi.startsWith("update")
+      ? "warning"
+      : aksi.startsWith("create") || aksi.startsWith("register")
+        ? "success"
+        : "secondary";
+  return <Badge variant={variant as "destructive" | "warning" | "success" | "secondary"}>{label}</Badge>;
 }
 
 export default async function LogAktivitasPage(props: {
