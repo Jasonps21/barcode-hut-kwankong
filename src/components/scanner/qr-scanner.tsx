@@ -14,6 +14,15 @@ export function QrScanner({ onDetect, active = true }: Props) {
   const scannerRef = useRef<{ stop: () => Promise<void>; clear: () => void } | null>(null);
   const lastDetectRef = useRef<{ text: string; t: number }>({ text: "", t: 0 });
 
+  // Handler disimpan di ref supaya efek pembuka kamera tidak ikut bergantung
+  // padanya. Pada alur multi-scan pemanggil melakukan render ulang setiap kupon
+  // discan; kalau identitas fungsi masuk ke daftar dependensi, kamera akan
+  // stop-start di tiap render dan scanner praktis tidak bisa dipakai.
+  const onDetectRef = useRef(onDetect);
+  useEffect(() => {
+    onDetectRef.current = onDetect;
+  });
+
   useEffect(() => {
     if (!active) return;
     let cancelled = false;
@@ -35,7 +44,7 @@ export function QrScanner({ onDetect, active = true }: Props) {
             if (decodedText === last.text && now - last.t < 1500) return;
             lastDetectRef.current = { text: decodedText, t: now };
             try { navigator.vibrate?.(80); } catch {}
-            onDetect(decodedText.trim());
+            onDetectRef.current(decodedText.trim());
           },
           () => {},
         );
@@ -52,7 +61,7 @@ export function QrScanner({ onDetect, active = true }: Props) {
         scannerRef.current = null;
       }
     };
-  }, [active, onDetect]);
+  }, [active]);
 
   return (
     <div className="space-y-2">

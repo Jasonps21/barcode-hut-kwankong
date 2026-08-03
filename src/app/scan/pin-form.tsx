@@ -9,6 +9,7 @@ import { unlockScan } from "./pin-actions";
 
 export function PinGate() {
   const [pin, setPin] = useState("");
+  const [konter, setKonter] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [pending, startTransition] = useTransition();
   const router = useRouter();
@@ -17,7 +18,7 @@ export function PinGate() {
     if (!pin) return;
     setError(null);
     startTransition(async () => {
-      const r = await unlockScan(pin);
+      const r = await unlockScan(pin, konter);
       if (r.ok) {
         router.refresh();
       } else {
@@ -31,6 +32,13 @@ export function PinGate() {
     <div className="flex flex-col items-center gap-3 py-8 text-center">
       <Lock className="h-8 w-8 text-muted-foreground" />
       <p className="text-sm text-muted-foreground">Masukkan PIN akses untuk membuka scanner.</p>
+      <Input
+        className="w-full max-w-xs"
+        placeholder="Nama konter (mis. Konter 3)"
+        value={konter}
+        onChange={(e) => setKonter(e.target.value)}
+        onKeyDown={(e) => { if (e.key === "Enter") submit(); }}
+      />
       <div className="flex w-full max-w-xs gap-2">
         <Input
           type="password"

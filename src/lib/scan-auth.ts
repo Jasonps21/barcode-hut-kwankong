@@ -4,6 +4,7 @@ import { createHmac, timingSafeEqual } from "node:crypto";
 import { createAdminClient } from "@/lib/supabase/admin";
 
 const COOKIE_NAME = "scan_pin_ok";
+const KONTER_COOKIE = "scan_konter";
 const MAX_AGE_SECONDS = 60 * 60 * 12; // 12 jam, cukup untuk 1 sesi acara
 const SETTINGS_KEY = "scan_pin";
 
@@ -57,4 +58,26 @@ export async function grantScanAccess(): Promise<void> {
     maxAge: MAX_AGE_SECONDS,
     path: "/",
   });
+}
+
+/** Label konter (mis. "Konter 3") yang ikut tercatat di log tiap penukaran,
+ *  supaya sengketa "saya tidak pernah menukar sekian kupon" bisa ditelusuri.
+ *  Ini sekadar penanda untuk audit, bukan kontrol akses — jadi tidak perlu
+ *  ditandatangani seperti cookie PIN. */
+export async function setKonterLabel(nama: string): Promise<void> {
+  const v = nama.trim().slice(0, 40);
+  if (!v) return;
+  const store = await cookies();
+  store.set(KONTER_COOKIE, v, {
+    httpOnly: true,
+    secure: process.env.NODE_ENV === "production",
+    sameSite: "lax",
+    maxAge: MAX_AGE_SECONDS,
+    path: "/",
+  });
+}
+
+export async function getKonterLabel(): Promise<string | null> {
+  const store = await cookies();
+  return store.get(KONTER_COOKIE)?.value ?? null;
 }
