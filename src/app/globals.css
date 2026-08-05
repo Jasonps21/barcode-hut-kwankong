@@ -72,6 +72,22 @@
 
 * { border-color: var(--border); }
 
+/* Kilatan panel hasil scan. Di konter, dua penukaran berturut-turut tampil
+   nyaris identik — tanpa penanda gerak, petugas tidak sadar layar sudah
+   berganti ke peserta berikutnya. Sengaja singkat supaya tidak memperlambat
+   antrian, dan dihormati prefers-reduced-motion di bawah. */
+@keyframes kilat-hasil {
+  0%   { transform: scale(0.985); opacity: 0.4; }
+  60%  { transform: scale(1.006); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+.kilat-hasil { animation: kilat-hasil 320ms ease-out; }
+
+@media (prefers-reduced-motion: reduce) {
+  .kilat-hasil { animation: none; }
+}
+
 html, body { height: 100%; }
 body {
   background: var(--background);
