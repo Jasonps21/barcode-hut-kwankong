@@ -1,4 +1,4 @@
-import { Banknote, Download, FileSpreadsheet, FileText, Ticket, Wallet } from "lucide-react";
+import { Banknote, Download, FileSpreadsheet, FileText, Image as ImageIcon, Ticket, Wallet } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -190,6 +190,13 @@ export default async function LaporanPage(props: {
                 {f.icon} {f.label}
               </a>
             ))}
+            <a
+              href={`/api/laporan/donasi-bukti?from=${from}&to=${to}&metode=${metode}`}
+              className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-600/40 bg-emerald-50 px-3 text-xs font-medium text-emerald-800 shadow-sm transition-colors hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900"
+              title="Excel dengan foto bukti transfer tertanam di setiap baris. Hanya baris yang punya bukti."
+            >
+              <ImageIcon className="h-3.5 w-3.5" /> Excel + Bukti
+            </a>
           </div>
         </CardHeader>
         <CardContent className="p-0">
