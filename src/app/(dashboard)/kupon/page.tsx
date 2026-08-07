@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, RotateCcw, Search, Ticket } from "lucide-react";
+import { ChevronLeft, ChevronRight, Download, FileSpreadsheet, RotateCcw, Search, Ticket } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -108,6 +108,23 @@ export default async function KuponPage(props: {
     return `/kupon?${params.toString()}`;
   }
 
+  // Export mengikuti filter yang sedang aktif (kelompok + status + pencarian),
+  // bukan hanya halaman yang tampil — jadi seluruh baris hasil filter ikut terunduh.
+  function exportHref(format: "xlsx" | "csv"): string {
+    const params = new URLSearchParams();
+    if (selectedKelompok) params.set("kelompok", selectedKelompok);
+    params.set("status", status);
+    if (q) params.set("q", q);
+    params.set("format", format);
+    return `/api/laporan/kupon?${params.toString()}`;
+  }
+
+  const statusLabelSingkat =
+    status === "assigned" ? "belum ditukar"
+    : status === "redeemed" ? "sudah ditukar"
+    : status === "available" ? "belum terassign"
+    : "semua status";
+
   const rangeLabel = kelompok
     ? `${kelompok.prefix}${String(kelompok.range_start).padStart(kelompok.padding, "0")} – ${kelompok.prefix}${String(kelompok.range_end).padStart(kelompok.padding, "0")}`
     : null;
@@ -198,12 +215,30 @@ export default async function KuponPage(props: {
           </form>
 
           <Card>
-            <CardHeader>
-              <CardTitle className="flex items-center gap-2"><Ticket className="h-5 w-5" /> Daftar Kupon</CardTitle>
-              <CardDescription>
-                Menampilkan {firstShown}–{lastShown} dari {total} kupon. Kupon yang sudah ditukar bisa dibatalkan
-                di kolom Aksi bila terjadi salah scan — kupon kembali berstatus terassign dan bisa discan ulang.
-              </CardDescription>
+            <CardHeader className="flex-row items-start justify-between gap-3 space-y-0">
+              <div className="space-y-1.5">
+                <CardTitle className="flex items-center gap-2"><Ticket className="h-5 w-5" /> Daftar Kupon</CardTitle>
+                <CardDescription>
+                  Menampilkan {firstShown}–{lastShown} dari {total} kupon. Kupon yang sudah ditukar bisa dibatalkan
+                  di kolom Aksi bila terjadi salah scan — kupon kembali berstatus terassign dan bisa discan ulang.
+                </CardDescription>
+              </div>
+              <div className="flex shrink-0 flex-wrap gap-2">
+                <a
+                  href={exportHref("xlsx")}
+                  title={`Unduh Excel: seluruh ${total} kupon ${statusLabelSingkat} sesuai filter, diurutkan berdasarkan nama peserta.`}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <FileSpreadsheet className="h-3.5 w-3.5" /> Excel
+                </a>
+                <a
+                  href={exportHref("csv")}
+                  title={`Unduh CSV: seluruh ${total} kupon ${statusLabelSingkat} sesuai filter.`}
+                  className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
+                >
+                  <Download className="h-3.5 w-3.5" /> CSV
+                </a>
+              </div>
             </CardHeader>
             <CardContent className="p-0">
               <Table>

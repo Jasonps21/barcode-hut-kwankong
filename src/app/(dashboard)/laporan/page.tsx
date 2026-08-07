@@ -120,12 +120,21 @@ export default async function LaporanPage(props: {
           <h1 className="text-3xl font-bold tracking-tight">Laporan</h1>
           <p className="text-sm text-muted-foreground">Rekap uang masuk, kupon keluar, dan statistik per kelompok.</p>
         </div>
-        <a
-          href="/api/laporan/peserta"
-          className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&_svg]:size-4"
-        >
-          <Download /> Export Semua Peserta
-        </a>
+        <div className="flex flex-wrap gap-2">
+          <a
+            href="/api/laporan/kupon?status=assigned&format=xlsx"
+            title="Excel semua kupon yang sudah dipegang peserta tapi belum ditukar — semua buku, diurutkan berdasarkan nama."
+            className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-amber-600/40 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 shadow-sm transition-colors hover:bg-amber-100 dark:border-amber-400/30 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900 [&_svg]:size-4"
+          >
+            <FileSpreadsheet /> Export Kupon Belum Ditukar
+          </a>
+          <a
+            href="/api/laporan/peserta"
+            className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&_svg]:size-4"
+          >
+            <Download /> Export Semua Peserta
+          </a>
+        </div>
       </div>
 
       {/* ---------- Filter ---------- */}
