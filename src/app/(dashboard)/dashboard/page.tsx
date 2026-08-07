@@ -1,4 +1,4 @@
-import { BadgeCheck, BanknoteArrowUp, CreditCard, HandCoins, MessageCircle, MessageCircleOff, MessageCircleWarning, PackageCheck, Ticket, TrendingUp, Trophy, Users, Wallet } from "lucide-react";
+import { BanknoteArrowUp, CreditCard, HandCoins, Hourglass, MessageCircle, PackageCheck, Ticket, TrendingUp, Trophy, Users, Wallet } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -6,15 +6,20 @@ import { formatRupiah, dateKeyWITA } from "@/lib/utils";
 import { sumNominalDonasi } from "@/lib/donasi-sum";
 
 interface Stats {
-  total_kupon: number;
-  assigned: number;
-  redeemed: number;
+  /** Kupon yang sudah ada pemiliknya = belum_ditukar + sudah_ditukar. Ini yang
+   *  dipakai sebagai penyebut semua persentase: kupon yang belum dibagikan tidak
+   *  pernah akan ditukar, jadi memasukkannya hanya membuat progres terlihat
+   *  lebih buruk dari kenyataan di lapangan. */
+  kupon_beredar: number;
+  belum_ditukar: number;
+  sudah_ditukar: number;
+  /** Di luar total — hanya jadi keterangan kecil supaya selisih dengan jumlah
+   *  kupon yang tercetak tetap bisa dijelaskan saat ada yang bertanya. */
+  belum_dibagikan: number;
   total_donasi: number;
   total_peserta: number;
   peserta_donasi: number;
   wa_sent: number;
-  wa_failed: number;
-  wa_pending: number;
 }
 
 async function loadStats(kelompokId: string | null): Promise<Stats> {
@@ -49,29 +54,27 @@ async function loadStats(kelompokId: string | null): Promise<Stats> {
   };
 
   const [
-    totalKupon, assigned, redeemed,
-    totalPeserta, pesertaDonasi, waSent, waFailed,
+    assigned, redeemed, available,
+    totalPeserta, pesertaDonasi, waSent,
     total_donasi,
   ] = await Promise.all([
-    kuponCount(), kuponCount("assigned"), kuponCount("redeemed"),
-    pesertaCount(), pesertaDonasiCount, pesertaCount("sent"), pesertaCount("failed"),
+    kuponCount("assigned"), kuponCount("redeemed"), kuponCount("available"),
+    pesertaCount(), pesertaDonasiCount, pesertaCount("sent"),
     sumNominalDonasi(makeDonasiQuery),
   ]);
 
-  const total_peserta = totalPeserta.count ?? 0;
-  const wa_sent = waSent.count ?? 0;
-  const wa_failed = waFailed.count ?? 0;
+  const belum_ditukar = assigned.count ?? 0;
+  const sudah_ditukar = redeemed.count ?? 0;
 
   return {
-    total_kupon: totalKupon.count ?? 0,
-    assigned: assigned.count ?? 0,
-    redeemed: redeemed.count ?? 0,
+    kupon_beredar: belum_ditukar + sudah_ditukar,
+    belum_ditukar,
+    sudah_ditukar,
+    belum_dibagikan: available.count ?? 0,
     total_donasi,
-    total_peserta,
+    total_peserta: totalPeserta.count ?? 0,
     peserta_donasi: pesertaDonasi.count ?? 0,
-    wa_sent,
-    wa_failed,
-    wa_pending: Math.max(0, total_peserta - wa_sent - wa_failed),
+    wa_sent: waSent.count ?? 0,
   };
 }
 
@@ -308,7 +311,7 @@ export default async function DashboardPage() {
     isAdmin ? loadAnalytics() : Promise.resolve(null),
   ]);
 
-  const pct = (n: number) => stats.total_kupon ? ` (${Math.round((n / stats.total_kupon) * 100)}%)` : "";
+  const pct = (n: number) => stats.kupon_beredar ? ` (${Math.round((n / stats.kupon_beredar) * 100)}%)` : "";
   const pesertaDonasiPct = stats.total_peserta ? Math.round((stats.peserta_donasi / stats.total_peserta) * 100) : 0;
 
   return (
@@ -321,13 +324,18 @@ export default async function DashboardPage() {
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
-        <StatCard label="Total Kupon" value={String(stats.total_kupon)} icon={Ticket} />
-        <StatCard label="Diasosiasikan" value={String(stats.assigned)} hint={`dari ${stats.total_kupon}${pct(stats.assigned)}`} icon={BadgeCheck} accent="text-blue-500" />
-        <StatCard label="Sudah Ditukar" value={String(stats.redeemed)} hint={`dari ${stats.total_kupon}${pct(stats.redeemed)}`} icon={PackageCheck} accent="text-emerald-500" />
+        <StatCard
+          label="Kupon Beredar"
+          value={String(stats.kupon_beredar)}
+          hint={stats.belum_dibagikan ? `${stats.belum_dibagikan} kupon belum dibagikan, tidak dihitung` : undefined}
+          icon={Ticket}
+        />
+        <StatCard label="Sudah Ditukar" value={String(stats.sudah_ditukar)} hint={`dari ${stats.kupon_beredar}${pct(stats.sudah_ditukar)}`} icon={PackageCheck} accent="text-emerald-500" />
+        <StatCard label="Belum Ditukar" value={String(stats.belum_ditukar)} hint={`dari ${stats.kupon_beredar}${pct(stats.belum_ditukar)}`} icon={Hourglass} accent="text-amber-500" />
         <StatCard label="Total Peserta" value={String(stats.total_peserta)} icon={Users} accent="text-violet-500" />
       </div>
 
-      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
+      <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Sudah Ikut Donasi"
           value={`${stats.peserta_donasi} (${pesertaDonasiPct}%)`}
@@ -337,8 +345,6 @@ export default async function DashboardPage() {
         />
         <StatCard label="Total Donasi" value={formatRupiah(stats.total_donasi)} icon={BanknoteArrowUp} accent="text-emerald-600" />
         <StatCard label="WA Terkirim" value={String(stats.wa_sent)} icon={MessageCircle} accent="text-emerald-500" />
-        <StatCard label="WA Gagal" value={String(stats.wa_failed)} icon={MessageCircleWarning} accent="text-rose-500" />
-        <StatCard label="WA Pending" value={String(stats.wa_pending)} icon={MessageCircleOff} accent="text-amber-500" />
       </div>
 
       {analytics && (
