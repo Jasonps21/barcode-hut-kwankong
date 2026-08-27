@@ -1,466 +1,1400 @@
-/* Cari Usaha — community business directory, styled as a card-catalog / yellow-pages ledger. */
+/* Cari Usaha — halaman pencarian usaha warga.
+ *
+ * Arah: terang, lapang, tenang. Dasar putih, garis rambut, banyak ruang
+ * kosong, dan warna hanya muncul sebagai rona lembut plus satu titik pekat
+ * per kategori. Tidak ada blok warna pekat, tidak ada pendar, tidak ada
+ * gradasi, tidak ada panel kaca.
+ *
+ * Halaman ini dikunci mode terang. Bukan kelalaian: warnanya adalah isi
+ * rancangannya, dan versi gelap selalu jatuh jadi abu-abu pekat yang justru
+ * ditolak. Dasbor di rute lain tidak terpengaruh.
+ *
+ * Sistem bentuk (satu skala, dipakai konsisten):
+ *   kendali kecil (tag, titik, tombol kecil) -> --r-kecil
+ *   kendali (isian, tombol)                  -> --r-sedang
+ *   kartu dan petak                          -> --r-besar
+ */
 
 .cu-page {
-  --cu-ink: #1c1b18;
-  --cu-marigold: #f0ac1b;
-  --cu-marigold-deep: #c9860f;
-  --cu-paper: #fffdf6;
-  --cu-rust: #c4401f;
-  --cu-forest: #2b5240;
-  --cu-line: #e7d8a8;
+  color-scheme: light;
+
+  --putih: #ffffff;
+  --kertas: #fcfbfa;
+  --kertas-teduh: #f6f2f2;
+
+  /* Netral dihangatkan sedikit ke arah merah supaya tidak bentrok dengan
+     aksennya. Satu keluarga abu saja, tidak dicampur dingin dan hangat. */
+  --tinta: #1b1719;
+  --tinta-lembut: #57504f;
+  --tinta-samar: #756c6d;
+
+  --garis: #ece7e7;
+  --garis-tegas: #dcd4d4;
+
+  /* Satu warna aksi untuk seluruh halaman: merah Kwan Kong. Dipilih yang
+     cukup pekat supaya lolos WCAG AA di dua arah sekaligus — putih di atas
+     merah 6,9:1, dan merah di atas putih juga 6,9:1. Merah yang lebih terang
+     akan gagal dipakai sebagai teks. */
+  --aksen: #b01e28;
+  --aksen-pekat: #8f1720;
+  --aksen-tipis: #fbeef0;
+
+  --r-kecil: 8px;
+  --r-sedang: 12px;
+  --r-besar: 16px;
+
+  /* Bayangan berlapis dan berwarna tinta, bukan satu bayangan hitam datar.
+     Lapisan rapat memberi tepi, lapisan lebar memberi jarak dari kertas. Itu
+     yang membedakan permukaan yang terasa mahal dari kotak putih biasa. */
+  --bayang: 0 1px 2px rgb(48 20 24 / 5%), 0 5px 14px -8px rgb(48 20 24 / 11%);
+  --bayang-angkat: 0 2px 6px rgb(48 20 24 / 6%), 0 18px 38px -18px rgb(176 30 40 / 15%),
+    0 40px 72px -44px rgb(48 20 24 / 30%);
+  --bayang-tebal: 0 2px 8px rgb(48 20 24 / 7%), 0 26px 54px -22px rgb(176 30 40 / 18%),
+    0 56px 96px -56px rgb(48 20 24 / 34%);
+
+  --lebar: 68rem;
+  --tepi: 1.25rem;
+  --lengkung: cubic-bezier(0.2, 0.8, 0.2, 1);
+  /* Sedikit melewati tujuan lalu kembali: memberi bobot tanpa memakai pustaka
+     fisika pegas. */
+  --pegas: cubic-bezier(0.22, 1.4, 0.36, 1);
+
+  /* Skala lapis. Hanya dua yang dibutuhkan halaman ini; angka acak seperti
+     z-index 9999 tidak dipakai di mana pun. */
+  --z-nav: 20;
+  --z-lompat: 30;
+  --z-butir: 40;
 
   min-height: 100dvh;
-  background: var(--cu-paper);
-  color: var(--cu-ink);
-  font-family: var(--font-body), ui-sans-serif, system-ui, sans-serif;
-}
-
-.cu-display {
-  font-family: var(--font-display), ui-sans-serif, sans-serif;
-}
-
-.cu-mono {
-  font-family: var(--font-mono), ui-monospace, monospace;
-}
-
-/* ---------- Hero ---------- */
-
-.cu-hero {
-  position: relative;
-  overflow: hidden;
-  background: linear-gradient(160deg, var(--cu-marigold) 0%, var(--cu-marigold-deep) 100%);
-  padding: 3.5rem 1.25rem 2.75rem;
-  border-bottom: 6px solid var(--cu-ink);
-}
-
-.cu-hero::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background-image: radial-gradient(var(--cu-ink) 1px, transparent 1px);
-  background-size: 18px 18px;
-  opacity: 0.05;
-  pointer-events: none;
-}
-
-.cu-hero-inner {
-  position: relative;
-  max-width: 46rem;
-  margin: 0 auto;
-}
-
-.cu-login-btn {
-  position: absolute;
-  top: 1.25rem;
-  right: 1.25rem;
-  z-index: 1;
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-  font-weight: 600;
-  color: var(--cu-ink);
-  background: rgb(255 253 246 / 70%);
-  border: 1.5px solid var(--cu-ink);
-  border-radius: 999px;
-  padding: 0.4rem 0.9rem;
-  text-decoration: none;
-  transition: background 0.15s ease, transform 0.15s ease;
-}
-
-.cu-login-btn:hover {
-  background: var(--cu-paper);
-  transform: translateY(-1px);
-}
-
-.cu-login-btn:focus-visible {
-  outline: 3px solid var(--cu-ink);
-  outline-offset: 2px;
-}
-
-.cu-eyebrow {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.5rem;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.22em;
-  text-transform: uppercase;
-  color: var(--cu-ink);
-  background: var(--cu-paper);
-  border: 1.5px solid var(--cu-ink);
-  border-radius: 999px;
-  padding: 0.3rem 0.75rem;
-  opacity: 0;
-  animation: cu-fade-up 0.6s ease-out 0.05s forwards;
-}
-
-.cu-title {
-  margin: 1rem 0 0.75rem;
-  font-size: clamp(2.75rem, 9vw, 4.75rem);
-  line-height: 0.94;
-  letter-spacing: -0.01em;
-  color: var(--cu-ink);
-}
-
-.cu-title span {
-  display: inline-block;
-  opacity: 0;
-  animation: cu-fade-up 0.65s ease-out forwards;
-}
-
-.cu-subhead {
-  max-width: 34rem;
-  font-size: 1.02rem;
-  line-height: 1.55;
-  color: rgb(28 27 24 / 82%);
-  opacity: 0;
-  animation: cu-fade-up 0.6s ease-out 0.4s forwards;
-}
-
-.cu-search-form {
-  margin-top: 1.75rem;
-  display: flex;
-  gap: 0.6rem;
-  opacity: 0;
-  animation: cu-fade-up 0.6s ease-out 0.5s forwards;
-}
-
-.cu-search-wrap {
-  position: relative;
-  flex: 1;
-}
-
-.cu-search-icon {
-  position: absolute;
-  left: 1rem;
-  top: 50%;
-  transform: translateY(-50%);
-  color: rgb(28 27 24 / 55%);
-  pointer-events: none;
-}
-
-.cu-search-input {
-  width: 100%;
-  height: 3.25rem;
-  padding: 0 1rem 0 2.75rem;
-  border-radius: 0.6rem;
-  border: 2px solid var(--cu-ink);
-  background: var(--cu-paper);
-  color: var(--cu-ink);
-  font-size: 1rem;
-  box-shadow: 3px 3px 0 0 var(--cu-ink);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.cu-search-input::placeholder {
-  color: rgb(28 27 24 / 45%);
-}
-
-.cu-search-input:focus-visible {
-  outline: none;
-  transform: translate(-2px, -2px);
-  box-shadow: 5px 5px 0 0 var(--cu-ink);
-}
-
-.cu-search-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  height: 3.25rem;
-  padding: 0 1.4rem;
-  border-radius: 0.6rem;
-  border: 2px solid var(--cu-ink);
-  background: var(--cu-rust);
-  color: var(--cu-paper);
-  font-weight: 700;
-  font-size: 0.95rem;
-  cursor: pointer;
-  box-shadow: 3px 3px 0 0 var(--cu-ink);
-  transition: transform 0.15s ease, box-shadow 0.15s ease, background 0.15s ease;
-}
-
-.cu-search-btn:hover {
-  background: #a8341a;
-}
-
-.cu-search-btn:active {
-  transform: translate(2px, 2px);
-  box-shadow: 1px 1px 0 0 var(--cu-ink);
-}
-
-.cu-search-btn:focus-visible {
-  outline: 3px solid var(--cu-ink);
-  outline-offset: 2px;
-}
-
-/* ---------- Category ticker ---------- */
-
-.cu-ticker {
-  margin-top: 1.75rem;
-  overflow: hidden;
-  -webkit-mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-  mask-image: linear-gradient(90deg, transparent, #000 8%, #000 92%, transparent);
-  opacity: 0;
-  animation: cu-fade-up 0.6s ease-out 0.6s forwards;
-}
-
-.cu-ticker-track {
-  display: flex;
-  width: max-content;
-  gap: 0.6rem;
-  animation: cu-marquee 32s linear infinite;
-}
-
-.cu-ticker:hover .cu-ticker-track {
-  animation-play-state: paused;
-}
-
-.cu-chip {
-  flex: none;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-  white-space: nowrap;
-  border: 1.5px solid var(--cu-ink);
-  border-radius: 999px;
-  padding: 0.35rem 0.85rem;
-  color: var(--cu-ink);
-  background: rgb(255 253 246 / 55%);
-  text-decoration: none;
-  transition: background 0.15s ease, transform 0.15s ease;
-}
-
-.cu-chip:hover {
-  background: var(--cu-paper);
-  transform: translateY(-1px);
-}
-
-/* ---------- Body / results ---------- */
-
-.cu-body {
-  max-width: 46rem;
-  margin: 0 auto;
-  padding: 2.25rem 1.25rem 4rem;
-}
-
-.cu-suggest-heading {
-  font-size: 0.95rem;
-  font-weight: 700;
-  margin-bottom: 0.9rem;
-}
-
-.cu-suggest-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.55rem;
-}
-
-.cu-suggest-pill {
-  font-size: 0.85rem;
-  border: 1.5px solid var(--cu-line);
-  border-radius: 999px;
-  padding: 0.45rem 0.95rem;
-  color: var(--cu-forest);
-  background: #fff;
-  text-decoration: none;
-  transition: border-color 0.15s ease, transform 0.15s ease, background 0.15s ease;
-}
-
-.cu-suggest-pill:hover {
-  border-color: var(--cu-forest);
-  background: rgb(43 82 64 / 6%);
-  transform: translateY(-1px);
-}
-
-.cu-result-meta {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  margin-bottom: 1.1rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 2px dashed var(--cu-line);
-}
-
-.cu-result-count {
-  font-size: 0.9rem;
-  color: rgb(28 27 24 / 70%);
-}
-
-.cu-result-clear {
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.78rem;
-  color: var(--cu-rust);
-  text-decoration: none;
-}
-
-.cu-result-clear:hover {
-  text-decoration: underline;
-}
-
-.cu-list {
   display: flex;
   flex-direction: column;
-  gap: 0.9rem;
+  background: var(--putih);
+  color: var(--tinta);
+  font-family: var(--font-jakarta), ui-sans-serif, system-ui, sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
 }
 
-.cu-card {
-  position: relative;
-  background: #fff;
-  border: 1.5px solid var(--cu-line);
-  border-radius: 0.5rem;
-  padding: 1.1rem 1.1rem 1.1rem 1.4rem;
-  opacity: 0;
-  animation: cu-fade-up 0.5s ease-out forwards;
-  transition: transform 0.2s ease, box-shadow 0.2s ease, border-color 0.2s ease;
+/* Yang menggulir adalah elemen html, bukan .cu-page, jadi scroll-behavior
+   harus dipasang di sini agar tautan lompat meluncur dan tidak melompat. */
+html:has(.cu-page) {
+  scroll-behavior: smooth;
 }
 
-.cu-card:hover {
-  transform: translateY(-3px) rotate(-0.35deg);
-  box-shadow: 4px 6px 0 0 var(--cu-line);
-  border-color: var(--cu-forest);
-}
-
-.cu-card-tab {
-  position: absolute;
-  left: -1px;
-  top: -0.55rem;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.68rem;
-  font-weight: 600;
-  letter-spacing: 0.05em;
-  color: var(--cu-paper);
-  padding: 0.2rem 0.55rem;
-  border-radius: 0.3rem 0.3rem 0 0;
-  transform-origin: bottom left;
-}
-
-.cu-tab-0 { background: var(--cu-rust); }
-.cu-tab-1 { background: var(--cu-forest); }
-.cu-tab-2 { background: var(--cu-marigold-deep); }
-
-.cu-card-top {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-
-.cu-card-name {
-  font-weight: 700;
-  font-size: 1.05rem;
-}
-
-.cu-card-badge {
-  font-size: 0.72rem;
-  font-weight: 600;
-  color: var(--cu-paper);
-  background: var(--cu-forest);
-  border-radius: 999px;
-  padding: 0.2rem 0.65rem;
-}
-
-.cu-card-keterangan {
-  margin-top: 0.35rem;
-  font-size: 0.9rem;
-  color: rgb(28 27 24 / 75%);
-}
-
-.cu-card-addr {
-  margin-top: 0.55rem;
-  display: flex;
-  align-items: flex-start;
-  gap: 0.4rem;
-  font-size: 0.85rem;
-  color: rgb(28 27 24 / 65%);
-}
-
-.cu-card-addr svg {
-  flex: none;
-  margin-top: 0.15rem;
-}
-
-.cu-card-footer {
-  margin-top: 0.75rem;
-  padding-top: 0.65rem;
-  border-top: 1px dashed var(--cu-line);
-}
-
-.cu-card-footer-multi {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-}
-
-.cu-wa-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.85rem;
-  font-weight: 600;
-  color: var(--cu-paper);
-  background: var(--cu-rust);
-  border-radius: 0.4rem;
-  padding: 0.4rem 0.8rem;
-  text-decoration: none;
-  transition: transform 0.15s ease, background 0.15s ease;
-}
-
-.cu-wa-btn:hover {
-  background: #a8341a;
-  transform: translateY(-1px);
-}
-
-.cu-wa-static {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.45rem;
-  font-family: var(--font-mono), ui-monospace, monospace;
-  font-size: 0.85rem;
-  color: rgb(28 27 24 / 55%);
-}
-
-.cu-empty {
-  border: 1.5px dashed var(--cu-line);
-  border-radius: 0.6rem;
-  padding: 2.25rem 1.5rem;
-  text-align: center;
-}
-
-.cu-empty-title {
-  font-size: 1.05rem;
-  font-weight: 700;
-  margin-bottom: 0.35rem;
-}
-
-.cu-empty-text {
-  font-size: 0.9rem;
-  color: rgb(28 27 24 / 65%);
-  margin-bottom: 1.25rem;
-}
-
-/* ---------- Keyframes ---------- */
-
-@keyframes cu-fade-up {
-  from { opacity: 0; transform: translateY(14px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes cu-marquee {
-  from { transform: translateX(0); }
-  to { transform: translateX(-50%); }
+html:has(.cu-page),
+body:has(.cu-page) {
+  background: var(--putih);
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .cu-eyebrow, .cu-title span, .cu-subhead, .cu-search-form, .cu-ticker, .cu-card {
+  html:has(.cu-page) {
+    scroll-behavior: auto;
+  }
+}
+
+/* Butiran halus di atas seluruh halaman. Ini yang menghilangkan kesan vektor
+   datar dari bidang putih besar.
+   Dipasang fixed dan pointer-events: none dengan sengaja — kalau ikut
+   menggulir, peramban harus melukis ulang teksturnya tiap frame dan FPS di
+   ponsel langsung jatuh. */
+.cu-page::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: var(--z-butir);
+  pointer-events: none;
+  opacity: 0.032;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='160' height='160'><filter id='b'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/></filter><rect width='160' height='160' filter='url(%23b)'/></svg>");
+}
+
+.cu-page ::selection {
+  background: var(--aksen-tipis);
+  color: var(--tinta);
+}
+
+.cu-page :focus-visible {
+  outline: 2px solid var(--aksen);
+  outline-offset: 3px;
+  border-radius: var(--r-kecil);
+}
+
+.cu-page a {
+  color: inherit;
+  text-decoration: none;
+}
+
+/* Tautan lompat untuk pengguna papan ketik: tersembunyi sampai difokus. */
+.cu-lompat {
+  position: fixed;
+  top: 0.75rem;
+  left: 0.75rem;
+  z-index: var(--z-lompat);
+  padding: 0.6rem 1rem;
+  border-radius: var(--r-sedang);
+  background: var(--aksen);
+  color: var(--putih);
+  font-size: 0.85rem;
+  font-weight: 700;
+  transform: translateY(-160%);
+  transition: transform 0.25s var(--lengkung);
+}
+
+.cu-lompat:focus-visible {
+  transform: none;
+}
+
+/* Navigasi melekat menutupi bagian atas sasaran jangkar tanpa ini. */
+.cu-badan {
+  scroll-margin-top: 84px;
+}
+
+/* Penanda pemicu navigasi ringkas. Diberi tinggi 1px, bukan nol: kotak tanpa
+   luas membuat intersectionRatio selalu 0 dan perilakunya jadi bergantung pada
+   tafsir tiap peramban. Satu piksel menghilangkan keraguan itu, dan ditarik
+   kembali dengan margin negatif supaya tidak menggeser apa pun. */
+.cu-penanda {
+  height: 1px;
+  margin-top: -1px;
+  pointer-events: none;
+}
+
+/* ---------- Enam rona kategori ---------- */
+
+/* Rona muda jadi latar, titik pekat jadi penanda. Teksnya selalu tinta gelap,
+   jadi kontrasnya aman di keenam rona tanpa perlu pengecualian. */
+/* Tidak ada satu pun rona merah di sini, dan itu disengaja. Merah dipesan
+   khusus untuk antarmuka — tombol, tautan, aksi. Begitu kategori juga boleh
+   merah, warga tidak lagi bisa membedakan mana yang bisa ditekan. */
+[data-rona="daun"]   { --rona: #e9f6f1; --rona-tua: #d3ece2; --titik: #0e9f6e; }
+[data-rona="langit"] { --rona: #e9f1fc; --rona-tua: #d4e4f9; --titik: #2f7fe0; }
+[data-rona="persik"] { --rona: #fcf1e9; --rona-tua: #f8e2d3; --titik: #d97317; }
+[data-rona="teal"]   { --rona: #e7f4f6; --rona-tua: #d0e9ed; --titik: #14818f; }
+[data-rona="lemon"]  { --rona: #faf6e4; --rona-tua: #f3ecca; --titik: #a8830c; }
+[data-rona="ungu"]   { --rona: #f1eefb; --rona-tua: #e2dcf6; --titik: #6d5bd0; }
+
+.cu-titik {
+  display: block;
+  flex: none;
+  width: 9px;
+  height: 9px;
+  border-radius: var(--r-kecil);
+  background: var(--titik, var(--aksen));
+}
+
+/* ================================================================== */
+/* Navigasi                                                            */
+/* ================================================================== */
+
+/* Navigasi melekat. Latarnya baru muncul setelah hero terlewat, jadi di posisi
+   paling atas bilahnya tidak terlihat sebagai bilah sama sekali. */
+.cu-nav {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-nav);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  height: 68px;
+  width: 100%;
+  padding: 0 max(var(--tepi), calc((100% - var(--lebar)) / 2));
+  background: rgb(255 255 255 / 0%);
+  border-bottom: 1px solid transparent;
+  transition: background 0.3s ease, border-color 0.3s ease,
+    backdrop-filter 0.3s ease, box-shadow 0.3s ease;
+}
+
+.cu-nav[data-ringkas] {
+  background: rgb(255 255 255 / 82%);
+  backdrop-filter: blur(14px) saturate(150%);
+  -webkit-backdrop-filter: blur(14px) saturate(150%);
+  border-bottom-color: var(--garis);
+  box-shadow: var(--bayang);
+}
+
+/* Kotak cari ringkas: meluncur turun dari balik bilah begitu hero terlewat. */
+.cu-nav-cari {
+  flex: 1;
+  min-width: 0;
+  max-width: 26rem;
+  margin: 0 auto;
+  opacity: 0;
+  transform: translateY(-10px);
+  pointer-events: none;
+  transition: opacity 0.28s ease, transform 0.34s var(--lengkung);
+}
+
+.cu-nav[data-ringkas] .cu-nav-cari {
+  opacity: 1;
+  transform: none;
+  pointer-events: auto;
+}
+
+/* Di layar sempit tidak ada ruang untuk dua hal sekaligus; nama kegiatan
+   mengalah supaya kotak carinya yang muat. */
+@media (max-width: 720px) {
+  .cu-nav[data-ringkas] .cu-merek {
+    display: none;
+  }
+
+  .cu-nav[data-ringkas] .cu-masuk span {
+    display: none;
+  }
+
+  .cu-nav[data-ringkas] .cu-masuk {
+    padding: 0 0.7rem;
+  }
+}
+
+.cu-merek {
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--tinta-samar);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  transition: color 0.2s ease;
+}
+
+.cu-merek:hover {
+  color: var(--tinta);
+}
+
+.cu-masuk {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: none;
+  height: 38px;
+  padding: 0 0.95rem;
+  border: 1px solid var(--garis-tegas);
+  border-radius: var(--r-sedang);
+  color: var(--tinta-lembut);
+  font-size: 0.85rem;
+  font-weight: 600;
+  white-space: nowrap;
+  transition: border-color 0.2s ease, color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.cu-masuk:hover {
+  border-color: var(--aksen);
+  color: var(--aksen);
+  box-shadow: var(--bayang);
+}
+
+.cu-masuk:active {
+  transform: translateY(1px);
+}
+
+/* ================================================================== */
+/* Bagian atas                                                         */
+/* ================================================================== */
+
+/* Latar hero disusun berlapis, bukan satu warna rata:
+     1. cahaya hijau sangat tipis dari kiri atas, arah sumber cahaya halaman
+     2. cahaya tosca lebih tipis lagi dari kanan, memberi kedalaman
+     3. kertas yang memutih ke bawah, menyambung ke badan halaman
+   Semuanya di bawah 8% supaya terbaca sebagai kedalaman kertas, bukan sebagai
+   gumpalan warna yang melayang. */
+.cu-atas {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  padding: clamp(3rem, 7vw, 5.5rem) var(--tepi) clamp(3rem, 6vw, 4.5rem);
+  border-bottom: 1px solid var(--garis);
+  background:
+    radial-gradient(58rem 40rem at 8% -18%, rgb(176 30 40 / 9%), transparent 62%),
+    /* Satu titik dingin di kanan mengimbangi merah di kiri. Tanpa itu seluruh
+       hero menjadi merah muda rata dan justru terlihat murah. */
+    radial-gradient(46rem 34rem at 96% 2%, rgb(52 64 120 / 5%), transparent 64%),
+    linear-gradient(180deg, #ffffff 0%, var(--kertas) 72%, var(--kertas) 100%);
+}
+
+/* Kisi halus. Ditutup topeng radial supaya memudar di tepi dan tidak terlihat
+   seperti kertas milimeter yang dipotong. */
+.cu-kisi {
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background-image:
+    linear-gradient(to right, rgb(48 20 24 / 5%) 1px, transparent 1px),
+    linear-gradient(to bottom, rgb(48 20 24 / 5%) 1px, transparent 1px);
+  background-size: 46px 46px;
+  -webkit-mask-image: radial-gradient(78% 66% at 26% 16%, #000 0%, transparent 76%);
+  mask-image: radial-gradient(78% 66% at 26% 16%, #000 0%, transparent 76%);
+}
+
+/* GERAK 1 — kisi hanyut lebih lambat daripada isi saat digulir. Paralaks
+   sungguhan tanpa satu baris JavaScript dan tanpa listener scroll. */
+@supports (animation-timeline: scroll()) {
+  @media (prefers-reduced-motion: no-preference) {
+    .cu-kisi {
+      animation-name: cu-hanyut;
+      animation-duration: auto;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-timeline: scroll(root block);
+      animation-range: 0 90vh;
+    }
+  }
+}
+
+@keyframes cu-hanyut {
+  to { translate: 0 -70px; }
+}
+
+.cu-atas-isi {
+  position: relative;
+  max-width: var(--lebar);
+  margin: 0 auto;
+  display: grid;
+  gap: clamp(2.5rem, 5vw, 4rem);
+  align-items: center;
+}
+
+@media (min-width: 1024px) {
+  .cu-atas-isi {
+    grid-template-columns: minmax(0, 1.05fr) minmax(0, 0.95fr);
+  }
+}
+
+.cu-atas-kiri {
+  min-width: 0;
+}
+
+.cu-percaya {
+  margin: 1.1rem 0 0;
+  font-size: 0.85rem;
+  color: var(--tinta-samar);
+  opacity: 0;
+  animation: cu-naik 0.65s var(--lengkung) 0.34s forwards;
+}
+
+.cu-judul {
+  max-width: 18ch;
+  margin: 0 0 0.6rem;
+  font-size: clamp(2rem, 4.6vw, 3.1rem);
+  font-weight: 800;
+  line-height: 1.12;
+  letter-spacing: -0.032em;
+}
+
+/* Kata tetap satuan baris supaya pemenggalannya wajar; hurufnya yang naik
+   bergiliran dari balik topeng. Bantalan bawah memberi ruang ekor huruf "j"
+   supaya tidak terpotong oleh overflow: hidden. */
+.cu-kata {
+  display: inline-block;
+  white-space: nowrap;
+}
+
+.cu-kata + .cu-kata {
+  margin-left: 0.26em;
+}
+
+.cu-huruf {
+  display: inline-block;
+  overflow: hidden;
+  vertical-align: bottom;
+  padding-bottom: 0.2em;
+  margin-bottom: -0.2em;
+}
+
+.cu-huruf > span {
+  display: inline-block;
+  transform: translateY(105%);
+  animation: cu-huruf-naik 0.72s var(--pegas) forwards;
+  animation-delay: calc(0.06s + var(--i, 0) * 0.022s);
+}
+
+/* GERAK 4 — judul bagian yang naik huruf demi huruf mengikuti gulir, bukan
+   waktu. Staggernya dibuat dengan menggeser rentang tiap huruf sedikit demi
+   sedikit, jadi ombaknya tetap ada meski tanpa animation-delay (yang memang
+   diabaikan pada timeline berbasis kemajuan).
+   Kalau peramban tidak mendukung, blok ini terlewat dan judulnya kembali ke
+   kaskade waktu biasa yang selalu berakhir terlihat. */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    [data-gulir-teks] .cu-huruf > span {
+      animation-name: cu-huruf-naik;
+      animation-duration: auto;
+      animation-timing-function: var(--pegas);
+      animation-fill-mode: both;
+      animation-delay: 0s;
+      animation-timeline: view();
+      animation-range: entry calc(12% + var(--i, 0) * 1.6%)
+        entry calc(52% + var(--i, 0) * 1.6%);
+    }
+  }
+}
+
+.cu-subjudul {
+  margin: 0 0 clamp(1.75rem, 3.5vw, 2.5rem);
+  font-size: 1.05rem;
+  color: var(--tinta-lembut);
+  opacity: 0;
+  animation: cu-naik 0.65s var(--lengkung) 0.14s forwards;
+}
+
+/* ---------- Tumpukan kartu usaha di kolom kanan ---------- */
+
+/* Mengisi separuh kanan hero dengan isi direktori yang sebenarnya, bukan
+   ilustrasi. Kartunya usaha nyata dari basis data, bisa diklik, dan bergilir
+   sendiri supaya satu hero sempat memamerkan sembilan usaha.
+
+   Perpindahan antar giliran ditangani transisi, bukan @keyframes: yang berubah
+   hanya `--slot`, dan tiap kartu meluncur dari posisi lamanya ke posisi barunya
+   di mana pun ia sedang berada saat itu. Animasi bingkai-kunci akan memaksa
+   tiap kartu berangkat dari titik awal yang sama. */
+.cu-tumpuk {
+  display: none;
+}
+
+@media (min-width: 1024px) {
+  /* Tinggi mengikuti jumlah kartu yang benar-benar terlihat. Kalau dipatok
+     tetap, direktori yang baru berisi satu usaha menyisakan kotak kosong tinggi
+     dan kartunya terlihat mengambang tanpa alasan. */
+  .cu-tumpuk {
+    position: relative;
+    display: block;
+    height: calc(9.5rem + (var(--n, 1) - 1) * 4.4rem);
+    perspective: 1100px;
+  }
+}
+
+/* GERAK 2 — panggung miring mengikuti kursor. Sudutnya sengaja kecil; lebih
+   dari ini berhenti terasa mahal dan mulai terasa seperti mainan. */
+.cu-panggung {
+  position: relative;
+  height: 100%;
+  transform-style: preserve-3d;
+  transform: rotateY(var(--putar-y, 0deg)) rotateX(var(--putar-x, 0deg));
+  transition: transform 0.5s var(--lengkung);
+}
+
+/* Lapisan luar hanya mengurus kedudukan kartu dalam tumpukan. Dipisah dari
+   lapisan dalam karena animasi mendarat ber-fill forwards mengunci `transform`
+   selamanya, dan kunci itu akan menelan seluruh perpindahan antar slot. */
+.cu-tumpuk-kartu {
+  position: absolute;
+  left: calc(var(--slot, 0) * 2.1rem);
+  top: calc(var(--slot, 0) * 4.4rem);
+  z-index: calc(10 - var(--slot, 0));
+  width: 19rem;
+  border-radius: var(--r-besar);
+  transform: translateZ(calc(var(--slot, 0) * -26px));
+  transition:
+    left 0.72s var(--lengkung),
+    top 0.72s var(--lengkung),
+    transform 0.72s var(--lengkung),
+    opacity 0.55s ease;
+}
+
+/* Kartu terdepan pamit: melayang keluar ke arah kiri atas sambil mendekat ke
+   pembaca, jadi terbacanya sebagai kartu yang diangkat dari tumpukan — bukan
+   sebagai kartu yang menghilang begitu saja. */
+.cu-tumpuk-kartu[data-posisi="keluar"] {
+  z-index: 11;
+  opacity: 0;
+  transform: translate3d(-3.4rem, -1.8rem, 60px) rotate(-5deg) scale(0.97);
+  pointer-events: none;
+}
+
+/* Antrean di luar layar. Duduk tepat di posisi kartu paling belakang dan tanpa
+   transisi sama sekali, supaya kartu yang baru saja terbang keluar bisa
+   dikembalikan ke belakang tanpa terlihat terbang mundur. Giliran berikutnya
+   ia tinggal mengembang masuk di tempat. */
+.cu-tumpuk-kartu[data-posisi="siap"] {
+  opacity: 0;
+  transform: translateZ(calc(var(--slot, 0) * -26px)) scale(0.92);
+  transition: none;
+  pointer-events: none;
+}
+
+/* Lapisan dalam: rupa kartunya sendiri, plus dua animasi yang tidak ada
+   hubungannya dengan giliran — mendarat sekali saat halaman dimuat, lalu
+   mengayun pelan selamanya. */
+.cu-tumpuk-isi {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  padding: 1.15rem 1.25rem;
+  border: 1px solid var(--garis);
+  border-radius: inherit;
+  background: var(--putih);
+  box-shadow: var(--bayang-tebal);
+  opacity: 0;
+  transform-origin: 20% 120%;
+  animation:
+    cu-kartu-mendarat 0.9s var(--pegas) forwards,
+    cu-melayang 7s ease-in-out infinite;
+  /* Jedanya bersandar pada `--i`, nomor tetap tiap kartu, bukan pada slotnya.
+     Slot berubah tiap giliran, dan mengubah animation-delay akan memulai ulang
+     kedua animasi di tengah jalan. */
+  animation-delay: calc(0.42s + var(--i) * 0.11s), calc(1.4s + var(--i) * 0.5s);
+  transition: box-shadow 0.3s var(--lengkung);
+}
+
+/* Rona kategorinya menyapu masuk dari bawah saat disentuh, sama seperti
+   perilaku kartu kategori di bawah. */
+.cu-tumpuk-isi::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  border-radius: inherit;
+  background: var(--rona);
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.cu-tumpuk-kartu:hover {
+  z-index: 12;
+}
+
+.cu-tumpuk-kartu:hover .cu-tumpuk-isi,
+.cu-tumpuk-kartu:focus-visible .cu-tumpuk-isi {
+  box-shadow: var(--bayang-angkat);
+}
+
+.cu-tumpuk-kartu:hover .cu-tumpuk-isi::before,
+.cu-tumpuk-kartu:focus-visible .cu-tumpuk-isi::before {
+  opacity: 1;
+}
+
+/* Nama dipangkas dua baris dan keterangan satu baris. Bukan demi kerapian
+   semata: kartunya bergilir, dan tinggi kartu yang ikut berubah tiap giliran
+   membuat seluruh tumpukan terlihat berdenyut naik-turun. Nama panjang tetap
+   utuh di hasil pencarian, tempat orang benar-benar membacanya. */
+.cu-tumpuk-nama {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  /* Dua baris penuh selalu dipesan, jadi nama sebaris tidak memendekkan kartu. */
+  min-height: 2.6em;
+}
+
+.cu-tumpuk-meta {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--tinta-samar);
+  /* Dua baris juga dipesan di sini. Satu baris saja terlihat lebih rapi, tapi
+     memotong nama kota dari "Dagang Perabotan Rumah Tangga, Kota Makassar" —
+     dan kota justru bagian yang dicari orang. */
+  min-height: 2.9em;
+}
+
+/* ---------- Kotak pencarian ---------- */
+
+.cu-cari {
+  position: relative;
+  display: flex;
+  align-items: center;
+  max-width: 38rem;
+  height: 60px;
+  padding: 0 0.45rem 0 3rem;
+  border: 1px solid var(--garis-tegas);
+  border-radius: var(--r-besar);
+  background: var(--putih);
+  box-shadow: var(--bayang);
+  opacity: 0;
+  animation: cu-naik 0.65s var(--lengkung) 0.23s forwards;
+  transition: border-color 0.2s ease, box-shadow 0.25s var(--lengkung);
+}
+
+.cu-cari:focus-within {
+  border-color: var(--aksen);
+  box-shadow: var(--bayang-angkat), 0 0 0 4px var(--aksen-tipis);
+}
+
+@media (max-width: 480px) {
+  .cu-cari {
+    height: 54px;
+    padding-left: 2.7rem;
+  }
+}
+
+.cu-cari-ikon {
+  position: absolute;
+  left: 1.05rem;
+  width: 19px;
+  height: 19px;
+  color: var(--tinta-samar);
+  pointer-events: none;
+  transition: color 0.2s ease;
+}
+
+.cu-cari:focus-within .cu-cari-ikon {
+  color: var(--aksen);
+}
+
+@media (max-width: 480px) {
+  .cu-cari-ikon {
+    left: 0.9rem;
+    width: 18px;
+    height: 18px;
+  }
+}
+
+.cu-cari-input {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  border: 0;
+  background: transparent;
+  color: var(--tinta);
+  font: inherit;
+  font-size: 1rem;
+  outline: none;
+  -webkit-appearance: none;
+  appearance: none;
+}
+
+/* Bingkai fokus bawaan dimatikan khusus di sini: pembungkusnya sudah menandai
+   fokus dengan garis aksen dan cincin mint, dua cincin sekaligus terlihat rusak. */
+.cu-page .cu-cari-input:focus-visible {
+  outline: none;
+}
+
+.cu-cari-input::-webkit-search-cancel-button {
+  display: none;
+}
+
+.cu-cari-input::placeholder {
+  color: var(--tinta-samar);
+}
+
+.cu-cari-hapus {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 32px;
+  height: 32px;
+  margin-right: 0.2rem;
+  border: 0;
+  border-radius: var(--r-kecil);
+  background: transparent;
+  color: var(--tinta-samar);
+  cursor: pointer;
+  transition: opacity 0.18s ease, background 0.18s ease, color 0.18s ease;
+}
+
+.cu-cari-hapus:hover {
+  background: var(--kertas-teduh);
+  color: var(--tinta);
+}
+
+/* Tanpa state React: tombol bersih hilang sendiri ketika kolom kosong. */
+.cu-cari:has(.cu-cari-input:placeholder-shown) .cu-cari-hapus {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.cu-cari-submit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  flex: none;
+  height: 46px;
+  padding: 0 1.2rem;
+  border: 0;
+  border-radius: var(--r-sedang);
+  background: var(--aksen);
+  color: var(--putih);
+  font: inherit;
+  font-size: 0.92rem;
+  font-weight: 700;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.cu-cari-submit:hover {
+  background: var(--aksen-pekat);
+}
+
+/* Tarikan magnetik ditulis ke properti translate yang berdiri sendiri, bukan
+   ke transform, supaya tidak bertabrakan dengan tekanan :active di bawah. */
+.cu-cari-submit {
+  translate: var(--tarik-x, 0) var(--tarik-y, 0);
+  transition: background 0.18s ease, translate 0.4s var(--lengkung);
+}
+
+.cu-cari-submit:active {
+  transform: translateY(1px) scale(0.97);
+}
+
+@media (max-width: 480px) {
+  .cu-cari-submit {
+    height: 42px;
+    padding: 0 0.9rem;
+  }
+}
+
+.cu-cari[data-pending] .cu-cari-submit {
+  cursor: progress;
+}
+
+.cu-berputar {
+  animation: cu-putar 0.8s linear infinite;
+}
+
+/* ---------- Varian ringkas di navigasi ---------- */
+
+.cu-cari-ringkas {
+  max-width: none;
+  height: 42px;
+  padding: 0 0.3rem 0 2.4rem;
+  border-radius: var(--r-sedang);
+  box-shadow: none;
+  animation: none;
+  opacity: 1;
+}
+
+.cu-cari-ringkas .cu-cari-ikon {
+  left: 0.8rem;
+  width: 17px;
+  height: 17px;
+}
+
+.cu-cari-ringkas .cu-cari-input {
+  font-size: 0.9rem;
+}
+
+.cu-cari-ringkas .cu-cari-submit {
+  height: 32px;
+  padding: 0 0.7rem;
+  font-size: 0.85rem;
+}
+
+/* Label tombol disembunyikan di bilah sempit; ikon kacanya sudah cukup. */
+@media (max-width: 560px) {
+  .cu-cari-ringkas .cu-cari-submit-teks {
+    display: none;
+  }
+
+  .cu-cari-ringkas .cu-cari-submit {
+    padding: 0 0.55rem;
+  }
+}
+
+.cu-cari-kbd {
+  display: none;
+}
+
+@media (min-width: 1024px) and (hover: hover) {
+  .cu-cari-kbd {
+    display: grid;
+    place-items: center;
+    flex: none;
+    width: 24px;
+    height: 24px;
+    margin-right: 0.5rem;
+    border: 1px solid var(--garis);
+    border-radius: var(--r-kecil);
+    color: var(--tinta-samar);
+    font-size: 0.74rem;
+    font-weight: 600;
+    line-height: 1;
+    transition: opacity 0.18s ease;
+  }
+
+  .cu-cari:focus-within .cu-cari-kbd,
+  .cu-cari:not(:has(.cu-cari-input:placeholder-shown)) .cu-cari-kbd {
+    opacity: 0;
+  }
+}
+
+/* ================================================================== */
+/* Badan                                                               */
+/* ================================================================== */
+
+.cu-badan {
+  flex: 1;
+  width: 100%;
+  max-width: calc(var(--lebar) + var(--tepi) * 2);
+  margin: 0 auto;
+  padding: clamp(2.25rem, 5vw, 3.5rem) var(--tepi) clamp(3.5rem, 7vw, 5.5rem);
+}
+
+.cu-bagian {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.cu-bagian-judul {
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.cu-bagian-cacah {
+  margin: 0;
+  font-size: 0.88rem;
+  color: var(--tinta-samar);
+  font-variant-numeric: tabular-nums;
+}
+
+.cu-hasil-kepala {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem 1rem;
+  margin-bottom: 1.5rem;
+}
+
+.cu-hasil-judul {
+  margin: 0;
+  font-size: 1rem;
+  font-weight: 500;
+  color: var(--tinta-lembut);
+}
+
+.cu-hasil-judul strong {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--tinta);
+  letter-spacing: -0.02em;
+}
+
+.cu-tautan {
+  flex: none;
+  font-size: 0.88rem;
+  font-weight: 600;
+  color: var(--aksen);
+  transition: color 0.2s ease;
+}
+
+.cu-tautan:hover {
+  color: var(--aksen-pekat);
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+/* ================================================================== */
+/* Petak kategori                                                      */
+/* ================================================================== */
+
+/* flex-grow membuat baris terakhir melebar sendiri, jadi tidak pernah ada
+   sel kosong berapa pun jumlah kategorinya. */
+.cu-petak {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+/* Batas lebar menahan baris terakhir. Tanpa itu, dua kartu sisa akan
+   memuai jadi setengah layar masing-masing dan barisnya terlihat cacat. */
+.cu-kat {
+  position: relative;
+  isolation: isolate;
+  flex: 1 1 14rem;
+  max-width: 21rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.5rem;
+  padding: 1.15rem 1.15rem 1.05rem;
+  border: 1px solid var(--garis);
+  border-radius: var(--r-besar);
+  background: var(--putih);
+  opacity: 0;
+  animation: cu-naik 0.5s var(--lengkung) forwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+  transition: background 0.25s ease, border-color 0.25s ease,
+    transform 0.28s var(--lengkung), box-shadow 0.28s var(--lengkung);
+}
+
+/* Ronanya baru muncul saat disentuh. Dalam keadaan diam halaman tetap putih
+   bersih; warna dipakai untuk menjawab, bukan untuk berteriak. */
+.cu-kat:hover {
+  background: var(--rona);
+  border-color: var(--rona-tua);
+  transform: translateY(-3px);
+  box-shadow: var(--bayang-angkat);
+}
+
+.cu-kat:active {
+  transform: translateY(-1px);
+}
+
+.cu-kat .cu-titik {
+  margin-bottom: 0.35rem;
+  transition: transform 0.28s var(--lengkung);
+}
+
+.cu-kat:hover .cu-titik {
+  transform: scale(1.35);
+}
+
+/* Sorotan lembut mengikuti kursor. Koordinatnya ditulis sebagai custom
+   property oleh satu listener pointermove di pembungkus daftar, jadi tidak ada
+   render ulang React per-frame. */
+.cu-kat::after,
+.cu-kartu::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  border-radius: inherit;
+  opacity: 0;
+  background: radial-gradient(
+    14rem 14rem at var(--mx, 50%) var(--my, 50%),
+    var(--rona-tua),
+    transparent 68%
+  );
+  transition: opacity 0.35s ease;
+}
+
+.cu-kat:hover::after,
+.cu-kartu:hover::after {
+  opacity: 0.55;
+}
+
+.cu-kat-nama {
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+  text-wrap: balance;
+}
+
+.cu-kat-jumlah {
+  font-size: 0.82rem;
+  color: var(--tinta-samar);
+  font-variant-numeric: tabular-nums;
+}
+
+.cu-kat-panah {
+  position: absolute;
+  right: 1.15rem;
+  bottom: 1.05rem;
+  width: 18px;
+  height: 18px;
+  color: var(--tinta-samar);
+  opacity: 0;
+  transform: translateX(-4px);
+  transition: opacity 0.25s ease, transform 0.28s var(--lengkung);
+}
+
+.cu-kat:hover .cu-kat-panah {
+  opacity: 1;
+  transform: translateX(0);
+  color: var(--tinta);
+}
+
+/* ================================================================== */
+/* Daftar hasil                                                        */
+/* ================================================================== */
+
+.cu-daftar {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 24rem), 1fr));
+  gap: 0.75rem;
+  align-items: start;
+}
+
+.cu-kartu {
+  position: relative;
+  isolation: isolate;
+  padding: 1.35rem;
+  border: 1px solid var(--garis);
+  border-radius: var(--r-besar);
+  background: var(--putih);
+  opacity: 0;
+  animation: cu-naik 0.45s var(--lengkung) forwards;
+  animation-delay: calc(var(--i, 0) * 40ms);
+  transition: border-color 0.25s ease, transform 0.28s var(--lengkung),
+    box-shadow 0.28s var(--lengkung);
+  /* Alamat dan keterangan diisi bebas oleh pengurus; kata panjang tanpa spasi
+     harus dipotong, bukan menjebol kartu di layar sempit. */
+  overflow-wrap: anywhere;
+}
+
+.cu-kartu:hover {
+  border-color: var(--rona-tua);
+  transform: translateY(-3px);
+  box-shadow: var(--bayang-angkat);
+}
+
+.cu-kartu-kepala {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.65rem;
+}
+
+.cu-kartu-nama {
+  margin: 0;
+  font-size: 1.05rem;
+  font-weight: 700;
+  letter-spacing: -0.015em;
+  line-height: 1.3;
+}
+
+.cu-kartu-jenis {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  flex: none;
+  padding: 0.2rem 0.6rem 0.2rem 0.5rem;
+  border-radius: var(--r-kecil);
+  background: var(--rona);
+  color: var(--tinta-lembut);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.cu-kartu-jenis .cu-titik {
+  width: 7px;
+  height: 7px;
+}
+
+.cu-kartu-ket {
+  margin: 0.5rem 0 0;
+  font-size: 0.92rem;
+  color: var(--tinta-lembut);
+}
+
+.cu-kartu-lokasi {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.45rem;
+  margin: 0.6rem 0 0;
+  font-size: 0.87rem;
+  color: var(--tinta-samar);
+}
+
+.cu-kartu-lokasi svg {
+  flex: none;
+  margin-top: 0.2rem;
+}
+
+.cu-kartu-kontak {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-top: 1.1rem;
+}
+
+.cu-wa {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  max-width: 100%;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--garis-tegas);
+  border-radius: var(--r-sedang);
+  color: var(--tinta-lembut);
+  font-size: 0.85rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+  transition: background 0.18s ease, border-color 0.18s ease, color 0.18s ease;
+}
+
+.cu-wa-utama {
+  border-color: var(--aksen);
+  background: var(--aksen);
+  color: var(--putih);
+}
+
+.cu-wa:hover {
+  border-color: var(--aksen);
+  color: var(--aksen);
+  background: var(--aksen-tipis);
+}
+
+.cu-wa-utama:hover {
+  background: var(--aksen-pekat);
+  border-color: var(--aksen-pekat);
+  color: var(--putih);
+}
+
+.cu-wa:active {
+  transform: translateY(1px);
+}
+
+.cu-kontak-kosong {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.85rem;
+  color: var(--tinta-samar);
+}
+
+/* ================================================================== */
+/* Keadaan kosong                                                      */
+/* ================================================================== */
+
+.cu-hampa {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: clamp(2rem, 5vw, 3.25rem);
+  border: 1px solid var(--garis);
+  border-radius: var(--r-besar);
+  background: var(--kertas);
+  opacity: 0;
+  animation: cu-naik 0.5s var(--lengkung) forwards;
+}
+
+.cu-hampa-ikon {
+  width: 30px;
+  height: 30px;
+  color: var(--tinta-samar);
+}
+
+.cu-hampa-judul {
+  margin: 0;
+  font-size: clamp(1.15rem, 2.2vw, 1.4rem);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
+}
+
+.cu-hampa-teks {
+  max-width: 38rem;
+  margin: 0 0 0.6rem;
+  font-size: 0.94rem;
+  color: var(--tinta-lembut);
+}
+
+.cu-saran {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin-bottom: 0.6rem;
+}
+
+.cu-saran-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.42rem 0.8rem;
+  border: 1px solid var(--garis-tegas);
+  border-radius: var(--r-sedang);
+  background: var(--putih);
+  font-size: 0.85rem;
+  font-weight: 600;
+  opacity: 0;
+  animation: cu-naik 0.45s var(--lengkung) forwards;
+  animation-delay: calc(0.12s + var(--i, 0) * 40ms);
+  transition: background 0.2s ease, border-color 0.2s ease,
+    transform 0.25s var(--lengkung);
+}
+
+.cu-saran-item:hover {
+  background: var(--rona);
+  border-color: var(--rona-tua);
+  transform: translateY(-2px);
+}
+
+/* ================================================================== */
+/* Kerangka tunggu                                                     */
+/* ================================================================== */
+
+.cu-kerangka {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.cu-kerangka-kartu {
+  flex: 1 1 14rem;
+  max-width: 21rem;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 1.15rem;
+  border: 1px solid var(--garis);
+  border-radius: var(--r-besar);
+  background: var(--putih);
+  opacity: 0;
+  animation: cu-naik 0.4s var(--lengkung) forwards;
+  animation-delay: calc(var(--i, 0) * 55ms);
+}
+
+.cu-kerangka-titik {
+  width: 9px;
+  height: 9px;
+  border-radius: var(--r-kecil);
+  margin-bottom: 0.4rem;
+}
+
+.cu-kerangka-titik,
+.cu-kerangka-baris {
+  background: var(--kertas-teduh);
+  animation: cu-denyut 1.4s ease-in-out infinite;
+}
+
+.cu-kerangka-baris {
+  height: 11px;
+  border-radius: var(--r-kecil);
+}
+
+.cu-w-40 { width: 40%; }
+.cu-w-70 { width: 70%; }
+
+/* ================================================================== */
+/* Kaki halaman                                                        */
+/* ================================================================== */
+
+.cu-kaki {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  width: 100%;
+  max-width: calc(var(--lebar) + var(--tepi) * 2);
+  margin: 0 auto;
+  padding: 1.5rem var(--tepi) 2.25rem;
+  border-top: 1px solid var(--garis);
+  font-size: 0.83rem;
+  color: var(--tinta-samar);
+}
+
+/* ================================================================== */
+/* Keyframes                                                           */
+/* ================================================================== */
+
+/* ================================================================== */
+/* Terungkap saat digulir                                              */
+/* ================================================================== */
+
+/* Kartu di bawah lipatan (ditandai data-gulir oleh server) tidak ikut kaskade
+ * saat muat, melainkan terungkap saat mendekat.
+ *
+ * Ini dipasang lewat timeline gulir CSS, bukan IntersectionObserver, karena
+ * dasarnya harus aman: kalau peramban tidak mendukung animation-timeline,
+ * blok @supports diabaikan dan kartu tetap memakai kaskade waktu biasa yang
+ * selalu berakhir terlihat. Tidak ada keadaan di mana isinya bisa tersangkut
+ * tak terlihat gara-gara skrip gagal jalan.
+ */
+@supports (animation-timeline: view()) {
+  @media (prefers-reduced-motion: no-preference) {
+    /* Ditulis longhand dengan sengaja. Bentuk singkat `animation:` akan
+       mengembalikan animation-duration ke 0s, dan pada timeline berbasis
+       kemajuan durasinya harus `auto` supaya terentang sepanjang rentang. */
+    .cu-petak [data-gulir],
+    .cu-daftar [data-gulir] {
+      animation-name: cu-terungkap;
+      animation-duration: auto;
+      animation-timing-function: linear;
+      animation-fill-mode: both;
+      animation-delay: 0s;
+      animation-timeline: view();
+      /* Rentangnya harus selesai di `entry`, bukan `cover`. Dengan `cover`,
+         kartu yang sudah utuh terlihat saat halaman dimuat tetap tertahan
+         separuh pudar karena kemajuan cover-nya belum cukup, dan pada halaman
+         pendek tidak ada sisa gulir untuk menuntaskannya. */
+      animation-range: entry 10% entry 90%;
+    }
+  }
+}
+
+@keyframes cu-terungkap {
+  from { opacity: 0; transform: translateY(26px) scale(0.975); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes cu-naik {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes cu-huruf-naik {
+  from { transform: translateY(105%); }
+  to { transform: translateY(0); }
+}
+
+/* Kartu hero mendarat: datang dari bawah sambil sedikit miring, lalu duduk
+   rata. Kedalaman Z-nya tidak diurus di sini — itu milik lapisan luar, yang
+   memang harus bebas berpindah slot; animasi ber-fill forwards akan mengunci
+   properti transform yang disentuhnya. */
+@keyframes cu-kartu-mendarat {
+  from { opacity: 0; transform: translateY(46px) rotate(-6deg) scale(0.94); }
+  to { opacity: 1; transform: none; }
+}
+
+/* Ayunan sangat kecil setelah mendarat, beda fase per kartu, supaya tumpukan
+   tidak terlihat sebagai gambar beku. */
+@keyframes cu-melayang {
+  0%, 100% { translate: 0 0; }
+  50% { translate: 0 -7px; }
+}
+
+@keyframes cu-denyut {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.5; }
+}
+
+@keyframes cu-putar {
+  to { transform: rotate(360deg); }
+}
+
+/* ================================================================== */
+/* Preferensi pengguna                                                 */
+/* ================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .cu-page {
+    scroll-behavior: auto;
+  }
+
+  .cu-page *,
+  .cu-page *::before,
+  .cu-page *::after {
     animation: none !important;
+    transition-duration: 0.01ms !important;
+  }
+
+  .cu-huruf > span,
+  .cu-subjudul,
+  .cu-percaya,
+  .cu-cari,
+  .cu-kat,
+  .cu-kartu,
+  .cu-tumpuk-isi,
+  .cu-hampa,
+  .cu-saran-item,
+  .cu-kerangka-kartu {
     opacity: 1 !important;
     transform: none !important;
+    translate: none !important;
   }
-  .cu-ticker-track {
-    animation: none !important;
+
+  /* Panah kategori tidak lagi meluncur masuk, jadi biarkan selalu tampak. */
+  .cu-kat-panah {
+    opacity: 1;
+    transform: none;
+  }
+
+  /* Kotak cari ringkas tetap berfungsi, hanya muncul tanpa meluncur. */
+  .cu-nav-cari {
+    transform: none;
   }
 }
