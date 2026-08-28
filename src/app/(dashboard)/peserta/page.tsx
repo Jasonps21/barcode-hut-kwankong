@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ExternalLink, FileCheck2, Pencil, Search, Send, Trash2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, FileCheck2, Pencil, Search, ShieldCheck, ShieldOff, Trash2 } from "lucide-react";
 import { requireProfile, canEditPeserta, canDeletePeserta } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
@@ -10,10 +10,14 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { ConfirmButton } from "@/components/ui/confirm-button";
+import { KirimUlangButton } from "@/components/ui/kirim-ulang-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupiah } from "@/lib/utils";
 import { buildWaMessage, normalizeWaNumber, formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import { resendWaAction, deletePesertaAction } from "./actions";
+// Aksi pengecualian tinggal di modul Log WhatsApp agar satu definisi dipakai
+// halaman Peserta, Transaksi, maupun pemilih massal.
+import { toggleKecualikanAction } from "../wa-log/actions";
 
 // Beri ruang waktu untuk pengiriman WA (Kirim Ulang) via `after()` di serverless.
 export const maxDuration = 60;
@@ -27,10 +31,15 @@ interface PesertaRow {
   metode_bayar: string | null; bukti_transfer_path: string | null;
   nomor_tt: number | null; registered_at: string | null;
   wa_status: string; wa_sent_at: string | null;
+  wa_dikecualikan: boolean | null; wa_alasan_kecuali: string | null;
   kelompok_id: string; kelompok: { nama: string } | null;
 }
 
 const PER_OPTIONS = ["10", "20", "40", "60", "all"] as const;
+// "dikecualikan" bukan nilai wa_status, melainkan kolom terpisah — sengaja
+// digabung ke satu dropdown karena bagi admin keduanya menjawab pertanyaan
+// yang sama: "siapa yang belum/tidak akan menerima pesan?".
+const WA_FILTER_OPTIONS = ["all", "sent", "pending", "failed", "not_sent", "dikecualikan"] as const;
 
 function waBadge(status: string) {
   switch (status) {
@@ -42,7 +51,7 @@ function waBadge(status: string) {
 }
 
 export default async function PesertaPage(props: {
-  searchParams: Promise<{ kelompok?: string; q?: string; per?: string; page?: string }>;
+  searchParams: Promise<{ kelompok?: string; wa?: string; q?: string; per?: string; page?: string }>;
 }) {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
   const allowEdit = canEditPeserta(profile);
@@ -51,6 +60,7 @@ export default async function PesertaPage(props: {
   const supabase = await createClient();
 
   const q = (sp.q ?? "").trim();
+  const waFilter = WA_FILTER_OPTIONS.includes(sp.wa as (typeof WA_FILTER_OPTIONS)[number]) ? sp.wa! : "all";
   const per = PER_OPTIONS.includes(sp.per as (typeof PER_OPTIONS)[number]) ? sp.per! : "20";
   const page = Math.max(1, Number(sp.page ?? "1") || 1);
   const showAll = per === "all";
@@ -64,11 +74,13 @@ export default async function PesertaPage(props: {
   const query = supabase
     .from("peserta")
     .select(
-      "id, nama, nama_hanzi, pinyin, alamat, kota_kabupaten, provinsi, keterangan, jenis_usaha(nama), no_whatsapp, nominal_donasi, metode_bayar, bukti_transfer_path, nomor_tt, registered_at, wa_status, wa_sent_at, kelompok_id, kelompok(nama)",
+      "id, nama, nama_hanzi, pinyin, alamat, kota_kabupaten, provinsi, keterangan, jenis_usaha(nama), no_whatsapp, nominal_donasi, metode_bayar, bukti_transfer_path, nomor_tt, registered_at, wa_status, wa_sent_at, wa_dikecualikan, wa_alasan_kecuali, kelompok_id, kelompok(nama)",
       { count: "exact" },
     )
     .order("created_at", { ascending: false });
   if (kelompokFilter) query.eq("kelompok_id", kelompokFilter);
+  if (waFilter === "dikecualikan") query.eq("wa_dikecualikan", true);
+  else if (waFilter !== "all") query.eq("wa_status", waFilter);
   if (q) {
     const like = `%${q}%`;
     query.or(
@@ -135,6 +147,7 @@ export default async function PesertaPage(props: {
   function hrefWith(overrides: Record<string, string | undefined>): string {
     const params = new URLSearchParams();
     if (sp.kelompok) params.set("kelompok", sp.kelompok);
+    if (waFilter !== "all") params.set("wa", waFilter);
     if (q) params.set("q", q);
     params.set("per", per);
     params.set("page", String(page));
@@ -176,6 +189,17 @@ export default async function PesertaPage(props: {
           </div>
         )}
         <div className="space-y-1">
+          <label htmlFor="wa" className="text-xs font-medium text-muted-foreground">Status WA</label>
+          <Select id="wa" name="wa" defaultValue={waFilter} className="w-full sm:w-40">
+            <option value="all">Semua</option>
+            <option value="sent">Terkirim</option>
+            <option value="pending">Pending</option>
+            <option value="failed">Gagal</option>
+            <option value="not_sent">Belum dikirim</option>
+            <option value="dikecualikan">Dikecualikan</option>
+          </Select>
+        </div>
+        <div className="space-y-1">
           <label htmlFor="per" className="text-xs font-medium text-muted-foreground">Per halaman</label>
           <Select id="per" name="per" defaultValue={per} className="w-full sm:w-28">
             <option value="10">10</option>
@@ -195,7 +219,7 @@ export default async function PesertaPage(props: {
           <CardTitle>{total} Peserta</CardTitle>
           <CardDescription>
             Menampilkan {firstShown}–{lastShown} dari {total}.{" "}
-            <b>Kirim Ulang</b> = otomatis via Fonnte. <b>WA Manual</b> = buka WhatsApp dengan pesan siap kirim.
+            <b>Kirim Ulang</b> = otomatis via WhatsApp resmi. <b>WA Manual</b> = buka WhatsApp dengan pesan siap kirim.
           </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
@@ -222,6 +246,7 @@ export default async function PesertaPage(props: {
               {rows.map((p) => {
                 const waLink = buildWaLink(p);
                 const hasWa = Boolean(normalizeWaNumber(p.no_whatsapp));
+                const dikecualikan = Boolean(p.wa_dikecualikan);
                 const buktiUrl = buktiMap.get(p.id);
                 return (
                   <TableRow key={p.id}>
@@ -267,13 +292,45 @@ export default async function PesertaPage(props: {
                         <span className="text-muted-foreground">-</span>
                       )}
                     </TableCell>
-                    <TableCell>{waBadge(p.wa_status)}</TableCell>
+                    <TableCell>
+                      <div className="flex flex-col items-start gap-1">
+                        {waBadge(p.wa_status)}
+                        {dikecualikan && (
+                          <span
+                            className="text-[10px] text-muted-foreground"
+                            title={p.wa_alasan_kecuali ?? "Ditandai jangan kirim"}
+                          >
+                            <Badge variant="outline" className="text-[10px]">Dikecualikan</Badge>
+                          </span>
+                        )}
+                      </div>
+                    </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-wrap justify-end gap-2">
-                        {hasWa && (
+                        {hasWa && !dikecualikan && (
                           <form action={resendWaAction}>
                             <input type="hidden" name="peserta_id" value={p.id} />
-                            <Button type="submit" variant="outline" size="sm"><Send /> Kirim Ulang</Button>
+                            <KirimUlangButton />
+                          </form>
+                        )}
+                        {profile.role === "admin" && (
+                          <form action={toggleKecualikanAction}>
+                            <input type="hidden" name="peserta_id" value={p.id} />
+                            <input type="hidden" name="jadikan" value={dikecualikan ? "0" : "1"} />
+                            <ConfirmButton
+                              type="submit"
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs"
+                              message={
+                                dikecualikan
+                                  ? `Izinkan kembali pengiriman WA ke ${p.nama}?\n\nTidak langsung dikirim — masih harus diantre.`
+                                  : `Tandai ${p.nama} sebagai jangan-kirim?\n\nDia tidak akan pernah diambil cron sampai tandanya dilepas.`
+                              }
+                            >
+                              {dikecualikan ? <ShieldCheck /> : <ShieldOff />}
+                              {dikecualikan ? "Izinkan" : "Jangan kirim"}
+                            </ConfirmButton>
                           </form>
                         )}
                         {waLink && (

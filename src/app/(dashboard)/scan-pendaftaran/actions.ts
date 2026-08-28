@@ -4,7 +4,7 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendPesertaWa } from "@/lib/fonnte";
+import { sendPesertaWa } from "@/lib/whatsapp";
 import { uploadBukti } from "@/lib/bukti";
 import { formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import type { MetodeBayar } from "@/types/database";
@@ -192,6 +192,9 @@ export async function registerExistingPesertaAction(
   const registeredAt = new Date().toISOString();
   const updatePayload: Record<string, unknown> = {
     no_whatsapp, nominal_donasi, metode_bayar, wa_status: "pending",
+    // Nol-kan agar penjaga anti-kirim-ganda di whatsapp.ts bisa mengklaim baris
+    // ini, termasuk saat peserta hasil impor sempat gagal kirim sebelumnya.
+    wa_attempt_count: 0,
     registered_at: registeredAt,
   };
   if (bukti_transfer_path) updatePayload.bukti_transfer_path = bukti_transfer_path;

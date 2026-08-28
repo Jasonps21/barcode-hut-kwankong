@@ -4,10 +4,10 @@ import { after } from "next/server";
 import { revalidatePath } from "next/cache";
 import { requireProfile, canEditPeserta, canDeletePeserta } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { sendPesertaWa } from "@/lib/fonnte";
+import { sendPesertaWa, klaimKirimUlang } from "@/lib/whatsapp";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { uploadBukti } from "@/lib/bukti";
-import { formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
+import { formatNomorTT, formatTanggalIndo, sanitizeWaParam } from "@/lib/wa-template";
 
 /** Assign nomor tanda terima sekuensial (atomic via RPC). Return nomor mentah. */
 async function assignNomorTT(admin: ReturnType<typeof createAdminClient>, pesertaId: string): Promise<number | null> {
@@ -101,7 +101,7 @@ export async function createPesertaAction(
   // Pinyin selalu dihitung ulang di server dari Hanzi agar konsisten (tidak
   // bergantung pada nilai dari client).
   const pinyin = nama_hanzi ? hanziToPinyin(nama_hanzi) : "";
-  const alamat = String(formData.get("alamat") ?? "").trim();
+  const alamat = sanitizeWaParam(String(formData.get("alamat") ?? ""));
   const no_whatsapp = String(formData.get("no_whatsapp") ?? "").trim();
   const nominalRaw = String(formData.get("nominal_donasi") ?? "").trim();
   const nominal_donasi = Number(nominalRaw.replace(/\D/g, ""));
@@ -288,7 +288,15 @@ export async function resendWaAction(formData: FormData): Promise<void> {
     .select("id", { count: "exact", head: true })
     .eq("peserta_id", pesertaId);
 
-  await admin.from("peserta").update({ wa_status: "pending" }).eq("id", pesertaId);
+  // Setel ulang status DAN klaim barisnya sekaligus. Kalau dipisah — nol-kan
+  // di sini, klaim menyusul di dalam `after()` — dua klik beruntun akan
+  // mengirim dua pesan, karena klik kedua menol-kan klaim milik klik pertama
+  // yang pengirimannya masih berjalan.
+  if (!(await klaimKirimUlang(pesertaId))) {
+    // Masih ada pengiriman berjalan untuk peserta ini. Diamkan.
+    revalidatePath("/peserta");
+    return;
+  }
 
   const nomorTT = p.nomor_tt ?? (await assignNomorTT(admin, pesertaId));
   after(async () => {
@@ -301,6 +309,7 @@ export async function resendWaAction(formData: FormData): Promise<void> {
         tanggal: formatTanggalIndo(p.registered_at),
         total_kupon: totalKupon ?? 0,
       },
+      sudahDiklaim: true,
     });
   });
 
@@ -322,7 +331,7 @@ export async function updatePesertaAction(
   const nama = String(formData.get("nama") ?? "").trim();
   const nama_hanzi = String(formData.get("nama_hanzi") ?? "").trim();
   const pinyin = nama_hanzi ? hanziToPinyin(nama_hanzi) : "";
-  const alamat = String(formData.get("alamat") ?? "").trim();
+  const alamat = sanitizeWaParam(String(formData.get("alamat") ?? ""));
   const no_whatsapp = String(formData.get("no_whatsapp") ?? "").trim();
   const nominal_donasi = Number(String(formData.get("nominal_donasi") ?? "").replace(/\D/g, ""));
   const metodeRaw = String(formData.get("metode_bayar") ?? "").trim();

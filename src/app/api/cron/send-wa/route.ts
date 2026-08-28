@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { processPendingWa } from "@/lib/fonnte";
+import { processPendingWa } from "@/lib/whatsapp";
 
 // Beri ruang waktu untuk memproses satu batch WA (delay + retry per pesan).
 export const maxDuration = 60;
@@ -20,6 +20,6 @@ export async function GET(request: Request) {
     }
   }
 
-  const result = await processPendingWa(30);
+  const result = await processPendingWa();
   return NextResponse.json({ ok: true, ...result });
 }
