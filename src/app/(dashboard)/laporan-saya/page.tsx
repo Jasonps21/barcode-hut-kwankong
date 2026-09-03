@@ -7,6 +7,8 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { dateKeyWITA, formatRupiah, formatTanggalJamWITA, formatTanggalWITA } from "@/lib/utils";
+import { adalahDonasiTerhitung } from "@/lib/donasi-sum";
+import { ambilSemuaBaris } from "@/lib/query-semua";
 
 interface PesertaRow {
   id: string; nama: string; nominal_donasi: number | string;
@@ -35,26 +37,32 @@ export default async function LaporanSayaPage(props: {
   const admin = createAdminClient();
 
   // Peserta yang SAYA daftarkan
-  let pq = admin
-    .from("peserta")
-    .select("id, nama, nominal_donasi, registered_at, created_at, kelompok(nama)")
-    .eq("created_by", profile.id)
-    .order("registered_at", { ascending: false, nullsFirst: false });
-  if (fromISO) pq = pq.gte("registered_at", fromISO);
-  if (toISO) pq = pq.lte("registered_at", toISO);
-  const { data: pesertaData } = await pq;
-  const peserta = (pesertaData ?? []) as unknown as PesertaRow[];
+  const makePesertaQuery = () => {
+    let pq = admin
+      .from("peserta")
+      .select("id, nama, nominal_donasi, registered_at, created_at, kelompok(nama)")
+      .eq("created_by", profile.id)
+      .order("registered_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true });
+    if (fromISO) pq = pq.gte("registered_at", fromISO);
+    if (toISO) pq = pq.lte("registered_at", toISO);
+    return pq;
+  };
+  const peserta = await ambilSemuaBaris<PesertaRow>(makePesertaQuery as never);
 
   // Kupon yang SAYA assign
-  let kq = admin
-    .from("kupon")
-    .select("nomor_kupon, peserta_id, assigned_at")
-    .eq("assigned_by", profile.id)
-    .order("assigned_at", { ascending: false });
-  if (fromISO) kq = kq.gte("assigned_at", fromISO);
-  if (toISO) kq = kq.lte("assigned_at", toISO);
-  const { data: kuponData } = await kq;
-  const kupons = (kuponData ?? []) as KuponRow[];
+  const makeKuponQuery = () => {
+    let kq = admin
+      .from("kupon")
+      .select("nomor_kupon, peserta_id, assigned_at")
+      .eq("assigned_by", profile.id)
+      .order("assigned_at", { ascending: false })
+      .order("nomor_kupon", { ascending: true });
+    if (fromISO) kq = kq.gte("assigned_at", fromISO);
+    if (toISO) kq = kq.lte("assigned_at", toISO);
+    return kq;
+  };
+  const kupons = await ambilSemuaBaris<KuponRow>(makeKuponQuery as never);
 
   // Map peserta_id -> daftar nomor kupon (untuk detail aktivitas)
   const kuponByPeserta = new Map<string, string[]>();
@@ -65,7 +73,11 @@ export default async function LaporanSayaPage(props: {
     kuponByPeserta.set(k.peserta_id, arr);
   }
 
-  const totalDonasi = peserta.reduce((a, p) => a + Number(p.nominal_donasi ?? 0), 0);
+  // Pakai definisi donasi yang sama dengan Dashboard/Transaksi/Laporan; daftar
+  // di bawah tetap menampilkan semua peserta yang didaftarkan petugas ini.
+  const totalDonasi = peserta
+    .filter(adalahDonasiTerhitung)
+    .reduce((a, p) => a + Number(p.nominal_donasi ?? 0), 0);
 
   // ---- Rekap harian: gabungkan jumlah peserta & kupon per tanggal ----
   const harian = new Map<string, { tgl: string; ts: number; peserta: number; kupon: number }>();

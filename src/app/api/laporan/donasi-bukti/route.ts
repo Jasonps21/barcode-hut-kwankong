@@ -1,6 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { hanyaDonasiTerhitung } from "@/lib/donasi-sum";
+import { ambilSemuaBaris } from "@/lib/query-semua";
 import { BUKTI_BUCKET } from "@/lib/bukti";
 import { buatXlsxBerfoto, type BarisFoto, type KolomSpec } from "@/lib/xlsx-foto";
 import { formatJamWITA, formatTanggalWITA } from "@/lib/utils";
@@ -87,19 +89,27 @@ export async function GET(req: NextRequest) {
   // "*" dipakai alih-alih daftar kolom panjang: dengan banyaknya filter
   // bersyarat di bawah, daftar eksplisit membuat inferensi tipe PostgREST
   // menggali terlalu dalam sampai tsc menyerah (TS2589).
-  let q = admin
-    .from("peserta")
-    .select("*, kelompok(nama)")
-    .not("registered_at", "is", null)
-    .gt("nominal_donasi", 0)
-    .order("registered_at", { ascending: true });
-  if (from) q = q.gte("registered_at", `${from}T00:00:00`);
-  if (to) q = q.lte("registered_at", `${to}T23:59:59.999`);
-  if (metode !== "all") q = q.eq("metode_bayar", metode);
+  const makeQuery = () => {
+    let q = hanyaDonasiTerhitung(
+      admin
+        .from("peserta")
+        .select("*, kelompok(nama)")
+        .order("registered_at", { ascending: true })
+        .order("id", { ascending: true }),
+    );
+    if (from) q = q.gte("registered_at", `${from}T00:00:00`);
+    if (to) q = q.lte("registered_at", `${to}T23:59:59.999`);
+    if (metode !== "all") q = q.eq("metode_bayar", metode);
+    return q;
+  };
 
-  const { data, error } = await q;
-  if (error) {
-    return new NextResponse(`Gagal mengambil data: ${error.message}`, {
+  // Ambil semua baris (batas PostgREST 1000/request) supaya export bukti tidak
+  // diam-diam kehilangan baris saat donasi sudah lewat seribu.
+  let data: unknown[];
+  try {
+    data = await ambilSemuaBaris<unknown>(makeQuery as never);
+  } catch (e) {
+    return new NextResponse(`Gagal mengambil data: ${(e as Error).message}`, {
       status: 500,
       headers: { "Content-Type": "text/plain; charset=utf-8" },
     });

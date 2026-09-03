@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
+import { ambilSemuaBaris } from "@/lib/query-semua";
 
 export const maxDuration = 60;
 export const dynamic = "force-dynamic";
@@ -15,17 +16,20 @@ export async function GET() {
   await requireProfile(["admin"]);
   const admin = createAdminClient();
 
-  const { data } = await admin
-    .from("peserta")
-    .select("nama, alamat, no_whatsapp, nominal_donasi, wa_status, wa_sent_at, created_at, kelompok(nama)")
-    .order("created_at", { ascending: false });
-
-  const rows = (data ?? []) as unknown as Array<{
+  // "Export SEMUA peserta" harus benar-benar semua: `select()` biasa berhenti
+  // di 1000 baris.
+  const rows = await ambilSemuaBaris<{
     nama: string; alamat: string; no_whatsapp: string;
     nominal_donasi: number | string; wa_status: string;
     wa_sent_at: string | null; created_at: string;
     kelompok: { nama: string } | null;
-  }>;
+  }>(() =>
+    admin
+      .from("peserta")
+      .select("nama, alamat, no_whatsapp, nominal_donasi, wa_status, wa_sent_at, created_at, kelompok(nama)")
+      .order("created_at", { ascending: false })
+      .order("id", { ascending: true }) as never,
+  );
 
   const header = ["Nama", "Alamat", "No WhatsApp", "Nominal Donasi", "Kelompok", "Status WA", "Dikirim Pada", "Dibuat Pada"];
   const lines = [header.join(",")];

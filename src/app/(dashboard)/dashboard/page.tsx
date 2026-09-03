@@ -3,7 +3,8 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatRupiah, dateKeyWITA } from "@/lib/utils";
-import { sumNominalDonasi } from "@/lib/donasi-sum";
+import { hanyaDonasiTerhitung, sumNominalDonasi } from "@/lib/donasi-sum";
+import { ambilSemuaBaris } from "@/lib/query-semua";
 
 interface Stats {
   /** Kupon yang sudah ada pemiliknya = belum_ditukar + sudah_ditukar. Ini yang
@@ -38,17 +39,19 @@ async function loadStats(kelompokId: string | null): Promise<Stats> {
     if (waStatus) q = q.eq("wa_status", waStatus);
     return q;
   };
-  // Peserta "sudah ikut donasi" = sudah selesai registrasi (registered_at terisi),
-  // beda dengan sekadar data yang diimpor tapi belum daftar/bayar.
+  // Peserta "sudah ikut donasi" — memakai definisi tunggal `hanyaDonasiTerhitung`
+  // supaya angkanya sama dengan jumlah peserta per kelompok & rekap di Laporan.
   const pesertaDonasiCount = (() => {
-    let q = supabase.from("peserta").select("id", { count: "exact", head: true }).not("registered_at", "is", null);
+    let q = hanyaDonasiTerhitung(supabase.from("peserta").select("id", { count: "exact", head: true }));
     if (kelompokId) q = q.eq("kelompok_id", kelompokId);
     return q;
   })();
   // total_donasi butuh SUM semua baris (bukan hanya 1000 pertama): pakai
   // helper yang menjumlahkan seluruh baris secara paginasi.
   const makeDonasiQuery = () => {
-    let q = supabase.from("peserta").select("nominal_donasi");
+    let q = hanyaDonasiTerhitung(
+      supabase.from("peserta").select("nominal_donasi").order("id", { ascending: true }),
+    );
     if (kelompokId) q = q.eq("kelompok_id", kelompokId);
     return q;
   };
@@ -89,7 +92,7 @@ interface Analytics {
 }
 
 // Analitik lintas kelompok — hanya untuk admin. Satu kali pindai seluruh
-// peserta terdaftar (paginasi 1000/baris, seperti sumNominalDonasi) lalu
+// donasi terhitung (dipaginasi penuh oleh `ambilSemuaBaris`) lalu
 // diagregasi di server: total donasi & jumlah peserta per kelompok, breakdown
 // metode bayar, dan tren pendaftaran 14 hari terakhir (WITA).
 async function loadAnalytics(): Promise<Analytics> {
@@ -107,30 +110,27 @@ async function loadAnalytics(): Promise<Analytics> {
   const dailyCount = new Map<string, number>();
   const dailyTotal = new Map<string, number>();
 
-  const PAGE = 1000;
-  let from = 0;
-  for (;;) {
-    const { data, error } = await supabase
-      .from("peserta")
-      .select("kelompok_id, nominal_donasi, metode_bayar, registered_at")
-      .not("registered_at", "is", null)
-      .gt("nominal_donasi", 0)
-      .range(from, from + PAGE - 1);
-    if (error || !data || data.length === 0) break;
-    for (const r of data as Array<{ kelompok_id: string; nominal_donasi: number | string; metode_bayar: string | null; registered_at: string | null }>) {
-      const nominal = Number(r.nominal_donasi ?? 0);
-      const pk = perKelompokMap.get(r.kelompok_id) ?? { total: 0, peserta: 0 };
-      pk.total += nominal;
-      pk.peserta += 1;
-      perKelompokMap.set(r.kelompok_id, pk);
-      if (r.metode_bayar === "cash") { metode.cash.total += nominal; metode.cash.count += 1; }
-      else if (r.metode_bayar === "transfer") { metode.transfer.total += nominal; metode.transfer.count += 1; }
-      const dk = dateKeyWITA(r.registered_at);
-      dailyCount.set(dk, (dailyCount.get(dk) ?? 0) + 1);
-      dailyTotal.set(dk, (dailyTotal.get(dk) ?? 0) + nominal);
-    }
-    if (data.length < PAGE) break;
-    from += PAGE;
+  const donasiRows = await ambilSemuaBaris<{
+    kelompok_id: string; nominal_donasi: number | string; metode_bayar: string | null; registered_at: string | null;
+  }>(() =>
+    hanyaDonasiTerhitung(
+      supabase
+        .from("peserta")
+        .select("kelompok_id, nominal_donasi, metode_bayar, registered_at")
+        .order("id", { ascending: true }),
+    ),
+  );
+  for (const r of donasiRows) {
+    const nominal = Number(r.nominal_donasi ?? 0);
+    const pk = perKelompokMap.get(r.kelompok_id) ?? { total: 0, peserta: 0 };
+    pk.total += nominal;
+    pk.peserta += 1;
+    perKelompokMap.set(r.kelompok_id, pk);
+    if (r.metode_bayar === "cash") { metode.cash.total += nominal; metode.cash.count += 1; }
+    else if (r.metode_bayar === "transfer") { metode.transfer.total += nominal; metode.transfer.count += 1; }
+    const dk = dateKeyWITA(r.registered_at);
+    dailyCount.set(dk, (dailyCount.get(dk) ?? 0) + 1);
+    dailyTotal.set(dk, (dailyTotal.get(dk) ?? 0) + nominal);
   }
 
   const perKelompok: KelompokDonasi[] = kelompokList
@@ -138,11 +138,9 @@ async function loadAnalytics(): Promise<Analytics> {
     .sort((a, b) => b.total - a.total);
 
   // Penyumbang tertinggi — query terpisah (order + limit) supaya presisi & murah.
-  const { data: topData } = await supabase
-    .from("peserta")
-    .select("nama, kelompok_id, nominal_donasi")
-    .not("registered_at", "is", null)
-    .gt("nominal_donasi", 0)
+  const { data: topData } = await hanyaDonasiTerhitung(
+    supabase.from("peserta").select("nama, kelompok_id, nominal_donasi"),
+  )
     .order("nominal_donasi", { ascending: false })
     .limit(10);
   const topDonatur: TopDonatur[] = ((topData ?? []) as Array<{ nama: string; kelompok_id: string; nominal_donasi: number | string }>).map((r) => ({

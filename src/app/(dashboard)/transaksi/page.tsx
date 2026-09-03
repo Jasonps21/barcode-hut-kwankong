@@ -1,17 +1,20 @@
 import Link from "next/link";
-import { ChevronLeft, ChevronRight, ExternalLink, Pencil, ReceiptText, Search, Send } from "lucide-react";
+import { ChevronLeft, ChevronRight, ExternalLink, Pencil, ReceiptText, Search, ShieldCheck, ShieldOff } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { ConfirmButton } from "@/components/ui/confirm-button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { KirimUlangButton } from "@/components/ui/kirim-ulang-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupiah, formatTanggalJamWITA } from "@/lib/utils";
-import { sumNominalDonasi } from "@/lib/donasi-sum";
+import { hanyaDonasiTerhitung, sumNominalDonasi } from "@/lib/donasi-sum";
 import { buildWaMessage, normalizeWaNumber, formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
 import { resendWaAction } from "../peserta/actions";
+import { toggleKecualikanAction } from "../wa-log/actions";
 import { KuponDetailModal } from "./kupon-detail-modal";
 import { CopyPesanButton } from "./copy-pesan-button";
 
@@ -23,11 +26,12 @@ interface TransaksiRow {
   nominal_donasi: number | string; metode_bayar: string | null;
   nomor_tt: number | null; registered_at: string | null;
   wa_status: string; wa_sent_at: string | null; wa_attempt_count: number;
+  wa_dikecualikan: boolean | null; wa_alasan_kecuali: string | null;
   kelompok_id: string; kelompok: { nama: string } | null; alamat: string;
 }
 
 const PER_OPTIONS = ["20", "40", "60", "100"] as const;
-const WA_STATUS_OPTIONS = ["all", "sent", "pending", "failed", "not_sent"] as const;
+const WA_STATUS_OPTIONS = ["all", "sent", "pending", "failed", "not_sent", "dikecualikan"] as const;
 
 function waBadge(status: string) {
   switch (status) {
@@ -56,14 +60,16 @@ export default async function TransaksiPage(props: {
       ? (sp.kelompok && sp.kelompok !== "all" ? sp.kelompok : null)
       : profile.kelompok_id;
 
-  const query = supabase
-    .from("peserta")
-    .select(
-      "id, nama, no_whatsapp, alamat, nominal_donasi, metode_bayar, nomor_tt, registered_at, wa_status, wa_sent_at, wa_attempt_count, kelompok_id, kelompok(nama)",
-      { count: "exact" },
-    )
-    .order("registered_at", { ascending: false, nullsFirst: false })
-    .gt("nominal_donasi", 0);
+  const query = hanyaDonasiTerhitung(
+    supabase
+      .from("peserta")
+      .select(
+        "id, nama, no_whatsapp, alamat, nominal_donasi, metode_bayar, nomor_tt, registered_at, wa_status, wa_sent_at, wa_attempt_count, wa_dikecualikan, wa_alasan_kecuali, kelompok_id, kelompok(nama)",
+        { count: "exact" },
+      )
+      .order("registered_at", { ascending: false, nullsFirst: false })
+      .order("id", { ascending: true }),
+  );
   if (kelompokFilter) query.eq("kelompok_id", kelompokFilter);
   if (waStatus !== "all") query.eq("wa_status", waStatus);
   if (q) {
@@ -75,7 +81,9 @@ export default async function TransaksiPage(props: {
   // Total nominal per metode bayar, mengikuti filter yang sama dengan daftar
   // transaksi (kelompok/status WA/pencarian) tapi mencakup SEMUA halaman.
   function donasiByMetode(metode: "cash" | "transfer") {
-    let m = supabase.from("peserta").select("nominal_donasi").gt("nominal_donasi", 0).eq("metode_bayar", metode);
+    let m = hanyaDonasiTerhitung(
+      supabase.from("peserta").select("nominal_donasi").order("id", { ascending: true }),
+    ).eq("metode_bayar", metode);
     if (kelompokFilter) m = m.eq("kelompok_id", kelompokFilter);
     if (waStatus !== "all") m = m.eq("wa_status", waStatus);
     if (q) {
@@ -236,6 +244,7 @@ export default async function TransaksiPage(props: {
             <option value="pending">Pending</option>
             <option value="failed">Gagal</option>
             <option value="not_sent">Belum dikirim</option>
+            <option value="dikecualikan">Dikecualikan</option>
           </Select>
         </div>
         <div className="space-y-1">
@@ -281,6 +290,7 @@ export default async function TransaksiPage(props: {
                 const pesan = buildPesan(p, totalKupon);
                 const waLink = buildWaLink(p, pesan);
                 const hasWa = Boolean(normalizeWaNumber(p.no_whatsapp));
+                const dikecualikan = Boolean(p.wa_dikecualikan);
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="whitespace-nowrap text-xs">{formatTanggalJamWITA(p.registered_at)}</TableCell>
@@ -307,6 +317,11 @@ export default async function TransaksiPage(props: {
                       {p.wa_status === "failed" && p.wa_attempt_count > 0 && (
                         <div className="mt-0.5 text-[10px] text-muted-foreground">{p.wa_attempt_count}x percobaan</div>
                       )}
+                      {dikecualikan && (
+                        <div className="mt-1" title={p.wa_alasan_kecuali ?? "Ditandai jangan kirim"}>
+                          <Badge variant="outline" className="text-[10px]">Dikecualikan</Badge>
+                        </div>
+                      )}
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex flex-wrap justify-end gap-2">
@@ -319,10 +334,30 @@ export default async function TransaksiPage(props: {
                             <Pencil /> Edit
                           </Link>
                         )}
-                        {hasWa && (
+                        {hasWa && !dikecualikan && (
                           <form action={resendWaAction}>
                             <input type="hidden" name="peserta_id" value={p.id} />
-                            <Button type="submit" variant="outline" size="sm"><Send /> Kirim Ulang</Button>
+                            <KirimUlangButton />
+                          </form>
+                        )}
+                        {profile.role === "admin" && (
+                          <form action={toggleKecualikanAction}>
+                            <input type="hidden" name="peserta_id" value={p.id} />
+                            <input type="hidden" name="jadikan" value={dikecualikan ? "0" : "1"} />
+                            <ConfirmButton
+                              type="submit"
+                              variant="ghost"
+                              size="sm"
+                              className="text-xs"
+                              message={
+                                dikecualikan
+                                  ? `Izinkan kembali pengiriman WA ke ${p.nama}?`
+                                  : `Tandai ${p.nama} sebagai jangan-kirim?`
+                              }
+                            >
+                              {dikecualikan ? <ShieldCheck /> : <ShieldOff />}
+                              {dikecualikan ? "Izinkan" : "Jangan kirim"}
+                            </ConfirmButton>
                           </form>
                         )}
                         {waLink && (

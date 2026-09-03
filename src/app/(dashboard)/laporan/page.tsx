@@ -9,6 +9,8 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatJamWITA, formatRupiah, formatTanggalWITA } from "@/lib/utils";
+import { hanyaDonasiTerhitung, sumNominalDonasi } from "@/lib/donasi-sum";
+import { ambilSemuaBaris } from "@/lib/query-semua";
 
 interface KelompokRow {
   id: string; nama: string; prefix: string;
@@ -41,36 +43,53 @@ export default async function LaporanPage(props: {
     .order("nama");
   const kelompokRows = (kelData ?? []) as KelompokRow[];
 
+  // Jumlah baris memakai COUNT di server (eksak, tanpa batas 1000) dan total
+  // donasi memakai sumNominalDonasi yang dipaginasi penuh — dulu keduanya
+  // dihitung dari `select()` biasa sehingga diam-diam terpotong di 1000 baris.
   const stats = await Promise.all(kelompokRows.map(async (k) => {
-    const [tot, asg, red, peserta] = await Promise.all([
+    const [tot, asg, red, anggota, donatur, donasi] = await Promise.all([
       admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
       admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "assigned"),
       admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "redeemed"),
-      admin.from("peserta").select("nominal_donasi").eq("kelompok_id", k.id),
+      admin.from("peserta").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
+      hanyaDonasiTerhitung(admin.from("peserta").select("id", { count: "exact", head: true })).eq("kelompok_id", k.id),
+      sumNominalDonasi(() =>
+        hanyaDonasiTerhitung(admin.from("peserta").select("nominal_donasi").order("id", { ascending: true }))
+          .eq("kelompok_id", k.id),
+      ),
     ]);
-    const totalDonasi = ((peserta.data ?? []) as { nominal_donasi: number | string }[])
-      .reduce((acc, p) => acc + Number(p.nominal_donasi ?? 0), 0);
-    return { ...k, total: tot.count ?? 0, assigned: asg.count ?? 0, redeemed: red.count ?? 0, donasi: totalDonasi, peserta: peserta.data?.length ?? 0 };
+    return {
+      ...k,
+      total: tot.count ?? 0, assigned: asg.count ?? 0, redeemed: red.count ?? 0,
+      donasi, peserta: anggota.count ?? 0, donatur: donatur.count ?? 0,
+    };
   }));
   const grand = stats.reduce(
-    (a, s) => ({ total: a.total + s.total, assigned: a.assigned + s.assigned, redeemed: a.redeemed + s.redeemed, donasi: a.donasi + s.donasi, peserta: a.peserta + s.peserta }),
-    { total: 0, assigned: 0, redeemed: 0, donasi: 0, peserta: 0 },
+    (a, s) => ({
+      total: a.total + s.total, assigned: a.assigned + s.assigned, redeemed: a.redeemed + s.redeemed,
+      donasi: a.donasi + s.donasi, peserta: a.peserta + s.peserta, donatur: a.donatur + s.donatur,
+    }),
+    { total: 0, assigned: 0, redeemed: 0, donasi: 0, peserta: 0, donatur: 0 },
   );
 
   // ================= Rekap uang masuk (registrasi) =================
-  let mq = admin
-    .from("peserta")
-    .select("id, nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok(nama)")
-    .not("registered_at", "is", null)
-    .order("registered_at", { ascending: false });
-  if (fromISO) mq = mq.gte("registered_at", fromISO);
-  if (toISO) mq = mq.lte("registered_at", toISO);
-  if (metode !== "all") mq = mq.eq("metode_bayar", metode);
-  const { data: regData } = await mq;
-  const regs = (regData ?? []) as unknown as Array<{
+  const makeRegQuery = () => {
+    let mq = hanyaDonasiTerhitung(
+      admin
+        .from("peserta")
+        .select("id, nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok(nama)")
+        .order("registered_at", { ascending: false })
+        .order("id", { ascending: true }),
+    );
+    if (fromISO) mq = mq.gte("registered_at", fromISO);
+    if (toISO) mq = mq.lte("registered_at", toISO);
+    if (metode !== "all") mq = mq.eq("metode_bayar", metode);
+    return mq;
+  };
+  const regs = await ambilSemuaBaris<{
     id: string; nama: string; nominal_donasi: number | string; metode_bayar: string | null;
     registered_at: string | null; created_by: string | null; kelompok: { nama: string } | null;
-  }>;
+  }>(makeRegQuery as never);
   let totalCash = 0, totalTransfer = 0;
   for (const r of regs) {
     const n = Number(r.nominal_donasi ?? 0);
@@ -79,18 +98,21 @@ export default async function LaporanPage(props: {
   const totalUang = totalCash + totalTransfer;
 
   // ================= Kupon keluar per hari =================
-  let kq = admin
-    .from("kupon")
-    .select("nomor_kupon, assigned_at, assigned_by, status, peserta(nama, kelompok(nama))")
-    .not("assigned_at", "is", null)
-    .order("assigned_at", { ascending: false });
-  if (fromISO) kq = kq.gte("assigned_at", fromISO);
-  if (toISO) kq = kq.lte("assigned_at", toISO);
-  const { data: kuponData } = await kq;
-  const kupons = (kuponData ?? []) as unknown as Array<{
+  const makeKuponQuery = () => {
+    let kq = admin
+      .from("kupon")
+      .select("nomor_kupon, assigned_at, assigned_by, status, peserta(nama, kelompok(nama))")
+      .not("assigned_at", "is", null)
+      .order("assigned_at", { ascending: false })
+      .order("nomor_kupon", { ascending: true });
+    if (fromISO) kq = kq.gte("assigned_at", fromISO);
+    if (toISO) kq = kq.lte("assigned_at", toISO);
+    return kq;
+  };
+  const kupons = await ambilSemuaBaris<{
     nomor_kupon: string; assigned_at: string | null; assigned_by: string | null; status: string;
     peserta: { nama: string; kelompok: { nama: string } | null } | null;
-  }>;
+  }>(makeKuponQuery as never);
 
   // nama petugas untuk created_by + assigned_by
   const userIds = [...new Set([
@@ -334,6 +356,7 @@ export default async function LaporanPage(props: {
                 <TableHead className="text-right">Diasosiasikan</TableHead>
                 <TableHead className="text-right">Ditukar</TableHead>
                 <TableHead className="text-right">Peserta</TableHead>
+                <TableHead className="text-right">Donatur</TableHead>
                 <TableHead className="text-right">Total Donasi</TableHead>
               </TableRow>
             </TableHeader>
@@ -349,6 +372,7 @@ export default async function LaporanPage(props: {
                     <TableCell className="text-right">{s.assigned}</TableCell>
                     <TableCell className="text-right">{s.redeemed}</TableCell>
                     <TableCell className="text-right">{s.peserta}</TableCell>
+                    <TableCell className="text-right">{s.donatur}</TableCell>
                     <TableCell className="text-right">{formatRupiah(s.donasi)}</TableCell>
                   </TableRow>
                 );
@@ -359,6 +383,7 @@ export default async function LaporanPage(props: {
                 <TableCell className="text-right">{grand.assigned}</TableCell>
                 <TableCell className="text-right">{grand.redeemed}</TableCell>
                 <TableCell className="text-right">{grand.peserta}</TableCell>
+                <TableCell className="text-right">{grand.donatur}</TableCell>
                 <TableCell className="text-right">{formatRupiah(grand.donasi)}</TableCell>
               </TableRow>
             </TableBody>

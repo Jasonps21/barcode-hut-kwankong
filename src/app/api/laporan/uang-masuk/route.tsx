@@ -4,6 +4,8 @@ import { Document, Page, Text, View, StyleSheet, renderToBuffer } from "@react-p
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { formatJamWITA, formatRupiah, formatTanggalWITA } from "@/lib/utils";
+import { hanyaDonasiTerhitung } from "@/lib/donasi-sum";
+import { ambilSemuaBaris } from "@/lib/query-semua";
 
 // File bisa besar (ribuan baris + render PDF) — jangan dibatasi durasi default.
 export const maxDuration = 60;
@@ -37,17 +39,22 @@ async function getRows(from: string, to: string, metode: string) {
   const admin = createAdminClient();
   const { fromISO, toISO } = dayRange(from, to);
 
-  let q = admin
-    .from("peserta")
-    .select("nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok(nama)")
-    .not("registered_at", "is", null)
-    .order("registered_at", { ascending: true });
-  if (fromISO) q = q.gte("registered_at", fromISO);
-  if (toISO) q = q.lte("registered_at", toISO);
-  if (metode === "cash" || metode === "transfer") q = q.eq("metode_bayar", metode);
-
-  const { data } = await q;
-  const rows = (data ?? []) as unknown as RegistrasiRow[];
+  // Ambil SEMUA baris — `select()` biasa terpotong di 1000 baris, sehingga
+  // file export dulu kekurangan data & totalnya lebih kecil dari layar Laporan.
+  const makeQuery = () => {
+    let q = hanyaDonasiTerhitung(
+      admin
+        .from("peserta")
+        .select("nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok(nama)")
+        .order("registered_at", { ascending: true })
+        .order("id", { ascending: true }),
+    );
+    if (fromISO) q = q.gte("registered_at", fromISO);
+    if (toISO) q = q.lte("registered_at", toISO);
+    if (metode === "cash" || metode === "transfer") q = q.eq("metode_bayar", metode);
+    return q;
+  };
+  const rows = await ambilSemuaBaris<RegistrasiRow>(makeQuery as never);
 
   const ids = [...new Set(rows.map((r) => r.created_by).filter(Boolean))] as string[];
   const petugas = new Map<string, string>();
