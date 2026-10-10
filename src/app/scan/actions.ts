@@ -43,29 +43,51 @@ export interface RedeemResult {
   error?: string;
 }
 
+/**
+ * Kegiatan yang kuponnya sedang ditukar di konter: kegiatan berjalan.
+ *
+ * Nomor kupon hanya unik di dalam satu kegiatan (A0001 boleh muncul lagi di
+ * acara berikutnya), jadi setiap pencarian wajib dibatasi ke sini. Memakai
+ * admin client karena konter masuk lewat PIN, bukan sesi login Supabase.
+ */
+async function kegiatanKonter(admin: ReturnType<typeof createAdminClient>): Promise<string | null> {
+  const { data } = await admin.from("kegiatan").select("id").eq("aktif", true).maybeSingle();
+  return (data as { id: string } | null)?.id ?? null;
+}
+
 export async function lookupKupon(nomorKupon: string): Promise<LookupResult> {
   if (!(await hasScanAccess())) redirect("/scan");
   const v = nomorKupon.trim().toUpperCase();
   if (!v) return { status: "not_found", nomor_kupon: v };
 
   const admin = createAdminClient();
+  const kegiatanId = await kegiatanKonter(admin);
+  if (!kegiatanId) return { status: "not_found", nomor_kupon: v };
+
   const { data } = await admin
     .from("kupon")
-    .select("id, status, kelompok_id, redeemed_at, kelompok(nama), peserta(id, nama, alamat, no_whatsapp)")
+    .select("id, status, kelompok_id, redeemed_at, kelompok(nama), donasi(anggota(id, nama, alamat, no_whatsapp))")
+    .eq("kegiatan_id", kegiatanId)
     .eq("nomor_kupon", v)
     .maybeSingle();
 
   if (!data) return { status: "not_found", nomor_kupon: v };
-  const k = data as unknown as {
+  const raw = data as unknown as {
     id: string;
     status: string;
     kelompok_id: string;
     redeemed_at: string | null;
     kelompok: { nama: string } | null;
-    peserta: { id: string; nama: string; alamat: string; no_whatsapp: string } | null;
+    donasi: { anggota: { id: string; nama: string; alamat: string | null; no_whatsapp: string | null } | null } | null;
+  };
+  const a = raw.donasi?.anggota ?? null;
+  // Layar konter memakai bentuk lama `peserta`; isinya kini anggota pemilik setoran.
+  const k = {
+    ...raw,
+    peserta: a ? { id: a.id, nama: a.nama, alamat: a.alamat ?? "", no_whatsapp: a.no_whatsapp ?? "" } : null,
   };
 
-  // Tanpa peserta tidak ada daftar kupon lain yang bisa ditampilkan.
+  // Tanpa pemilik tidak ada daftar kupon lain yang bisa ditampilkan.
   if (!k.peserta) {
     return {
       status: k.status === "redeemed" ? "already_redeemed" : "not_assigned",
@@ -76,12 +98,19 @@ export async function lookupKupon(nomorKupon: string): Promise<LookupResult> {
     };
   }
 
-  // Ambil seluruh kupon peserta ini sekali jalan, lalu pilah di memori: satu
-  // query sudah cukup untuk daftar sisa sekaligus ringkasan "x dari y".
+  // Ambil seluruh kupon anggota ini DI KEGIATAN INI sekali jalan (bisa dari
+  // beberapa setoran), lalu pilah di memori: satu query sudah cukup untuk
+  // daftar sisa sekaligus ringkasan "x dari y".
+  const { data: setoran } = await admin
+    .from("donasi")
+    .select("id")
+    .eq("anggota_id", k.peserta.id)
+    .eq("kegiatan_id", kegiatanId);
+  const donasiIds = ((setoran ?? []) as { id: string }[]).map((d) => d.id);
   const { data: milik } = await admin
     .from("kupon")
     .select("id, nomor_kupon, status")
-    .eq("peserta_id", k.peserta.id)
+    .in("donasi_id", donasiIds.length ? donasiIds : ["00000000-0000-0000-0000-000000000000"])
     .order("nomor_kupon");
 
   const semua = (milik ?? []) as { id: string; nomor_kupon: string; status: string }[];

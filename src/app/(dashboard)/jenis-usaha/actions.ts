@@ -58,11 +58,11 @@ export async function deleteJenisUsahaAction(formData: FormData): Promise<void> 
   const admin = createAdminClient();
 
   const { count } = await admin
-    .from("peserta")
+    .from("anggota")
     .select("id", { count: "exact", head: true })
     .eq("jenis_usaha_id", id);
   if ((count ?? 0) > 0) {
-    backWith({ error: `Tidak bisa dihapus: masih dipakai oleh ${count} peserta.` });
+    backWith({ error: `Tidak bisa dihapus: masih dipakai oleh ${count} anggota.` });
   }
 
   const { error } = await admin.from("jenis_usaha").delete().eq("id", id);

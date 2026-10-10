@@ -101,7 +101,7 @@ export async function Hasil({
 
       <Sorot className="cu-daftar">
         {rows.map((r, i) => {
-          const nomorUsaha = r.peserta_nomor_usaha ?? [];
+          const nomorUsaha = r.anggota_nomor_usaha ?? [];
           const lokasi = [r.kota_kabupaten, r.provinsi].filter(Boolean).join(", ");
           const jenis = r.jenis_usaha?.nama;
 

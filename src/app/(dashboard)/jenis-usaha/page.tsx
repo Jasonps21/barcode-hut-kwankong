@@ -23,7 +23,8 @@ export default async function JenisUsahaPage(props: {
   const { data } = await supabase.from("jenis_usaha").select("id, nama").order("nama");
   const rows = (data ?? []) as Row[];
 
-  const { data: pesertaData } = await supabase.from("peserta").select("jenis_usaha_id");
+  // Batas bawaan PostgREST 1000 baris; anggota sudah lewat angka itu.
+  const { data: pesertaData } = await supabase.from("anggota").select("jenis_usaha_id").not("jenis_usaha_id", "is", null).limit(20000);
   const usageCount = new Map<string, number>();
   for (const p of (pesertaData ?? []) as Array<{ jenis_usaha_id: string | null }>) {
     if (p.jenis_usaha_id) usageCount.set(p.jenis_usaha_id, (usageCount.get(p.jenis_usaha_id) ?? 0) + 1);
@@ -34,7 +35,7 @@ export default async function JenisUsahaPage(props: {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Jenis Usaha</h1>
         <p className="text-sm text-muted-foreground">
-          Kelola kategori jenis usaha peserta, dipakai di form peserta dan halaman pencarian publik /cari-usaha.
+          Kelola kategori jenis usaha anggota, dipakai di form anggota dan halaman pencarian publik /cari-usaha.
         </p>
       </div>
 
@@ -113,7 +114,7 @@ export default async function JenisUsahaPage(props: {
                         </form>
                       ) : (
                         <span
-                          title={`Tidak bisa dihapus: masih dipakai oleh ${used} peserta.`}
+                          title={`Tidak bisa dihapus: masih dipakai oleh ${used} anggota.`}
                           className="inline-flex h-8 cursor-not-allowed items-center gap-1.5 rounded-md border px-3 text-xs font-medium text-muted-foreground opacity-60 [&_svg]:size-3.5"
                         >
                           <Trash2 /> Terpakai

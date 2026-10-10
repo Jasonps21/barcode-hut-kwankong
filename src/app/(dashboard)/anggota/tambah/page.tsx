@@ -1,46 +1,56 @@
+import Link from "next/link";
+import { ArrowLeft } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
+import { getKegiatanAktif, getSemuaKegiatan } from "@/lib/kegiatan";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { PesertaForm } from "./peserta-form";
+import { AnggotaForm } from "./anggota-form";
 
-// Beri ruang waktu untuk pengiriman WA via `after()` di serverless.
+// Beri ruang waktu untuk upload bukti transfer di serverless.
 export const maxDuration = 60;
 
-export default async function TambahPesertaPage() {
+export default async function TambahAnggotaPage() {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
   const isAdmin = profile.role === "admin";
-
-  // Untuk kasus "tidak mengambil kupon", admin perlu memilih kelompok manual
-  // (kelompok tidak bisa ditentukan otomatis tanpa kupon).
-  let kelompokOptions: { id: string; nama: string }[] = [];
   const supabase = await createClient();
-  if (isAdmin) {
-    const { data } = await supabase
-      .from("kelompok")
-      .select("id, nama")
-      .order("nama", { ascending: true });
-    kelompokOptions = (data ?? []) as { id: string; nama: string }[];
-  }
 
-  const { data: jenisUsahaData } = await supabase
-    .from("jenis_usaha")
-    .select("id, nama")
-    .order("nama", { ascending: true });
-  const jenisUsahaOptions = (jenisUsahaData ?? []) as { id: string; nama: string }[];
+  const [{ data: bukuData }, { data: jenisUsahaData }, semuaKegiatan, kegiatanAktif] = await Promise.all([
+    isAdmin
+      ? supabase.from("kelompok").select("id, nama").order("nama", { ascending: true })
+      : Promise.resolve({ data: [] }),
+    supabase.from("jenis_usaha").select("id, nama").order("nama", { ascending: true }),
+    getSemuaKegiatan(),
+    getKegiatanAktif(),
+  ]);
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Tambah Peserta</h1>
-        <p className="text-sm text-muted-foreground">Input data peserta + scan kupon. WA otomatis dikirim setelah simpan.</p>
+      <div className="flex items-center gap-3">
+        <Link href="/anggota" className="inline-flex h-9 w-9 items-center justify-center rounded-md border bg-background hover:bg-accent [&_svg]:size-4">
+          <ArrowLeft />
+        </Link>
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Tambah Anggota</h1>
+          <p className="text-sm text-muted-foreground">
+            Untuk orang yang belum pernah tercatat. Kalau sudah ada, cari di halaman Anggota lalu tambah setorannya di sana.
+          </p>
+        </div>
       </div>
       <Card>
         <CardHeader>
-          <CardTitle>Data Peserta & Kupon</CardTitle>
-          <CardDescription>Isi data lengkap, lalu scan/ketik nomor kupon (boleh lebih dari satu). Semua kupon harus dari kelompok yang sama.</CardDescription>
+          <CardTitle>Data Anggota</CardTitle>
+          <CardDescription>
+            Identitas disimpan sekali dan dipakai di semua kegiatan. Setoran pertama boleh langsung diisi di bawah.
+          </CardDescription>
         </CardHeader>
         <CardContent>
-          <PesertaForm isAdmin={isAdmin} kelompokOptions={kelompokOptions} jenisUsahaOptions={jenisUsahaOptions} />
+          <AnggotaForm
+            isAdmin={isAdmin}
+            bukuOptions={(bukuData ?? []) as { id: string; nama: string }[]}
+            jenisUsahaOptions={(jenisUsahaData ?? []) as { id: string; nama: string }[]}
+            kegiatan={semuaKegiatan.map((k) => ({ id: k.id, nama: k.nama, aktif: k.aktif, pakai_kupon: k.pakai_kupon }))}
+            kegiatanAwalId={kegiatanAktif?.id ?? semuaKegiatan[0]?.id ?? ""}
+          />
         </CardContent>
       </Card>
     </div>

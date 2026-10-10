@@ -3,6 +3,7 @@ import * as XLSX from "xlsx";
 import { requireProfile } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { dateKeyWITA, formatTanggalJamWITA } from "@/lib/utils";
+import { pilihKegiatan } from "@/lib/kegiatan";
 import type { KuponStatus } from "@/types/database";
 
 // Bisa ribuan baris (semua kupon tanpa filter) — jangan dibatasi durasi default.
@@ -32,13 +33,21 @@ interface KuponExportRow {
   assigned_at: string | null;
   redeemed_at: string | null;
   kelompok: { nama: string } | null;
-  peserta: {
-    nama: string;
-    nama_hanzi: string | null;
-    no_whatsapp: string | null;
-    alamat: string | null;
+  donasi: {
     nomor_tt: number | null;
+    anggota: {
+      nama: string;
+      nama_hanzi: string | null;
+      no_whatsapp: string | null;
+      alamat: string | null;
+    } | null;
   } | null;
+}
+
+/** Bentuk datar per baris: data anggota diangkat dari setoran pemilik kupon. */
+function pemilik(r: KuponExportRow) {
+  const a = r.donasi?.anggota;
+  return a ? { ...a, nomor_tt: r.donasi?.nomor_tt ?? null } : null;
 }
 
 function csvEscape(v: unknown): string {
@@ -48,7 +57,7 @@ function csvEscape(v: unknown): string {
 }
 
 /** Supabase membatasi 1000 baris per query, jadi ambil bertahap. */
-async function fetchRows(kelompokId: string, status: StatusFilter, q: string): Promise<KuponExportRow[]> {
+async function fetchRows(kegiatanId: string, kelompokId: string, status: StatusFilter, q: string): Promise<KuponExportRow[]> {
   const admin = createAdminClient();
   const PAGE = 1000;
   const out: KuponExportRow[] = [];
@@ -57,8 +66,9 @@ async function fetchRows(kelompokId: string, status: StatusFilter, q: string): P
     let query = admin
       .from("kupon")
       .select(
-        "nomor_kupon, status, assigned_at, redeemed_at, kelompok:kelompok_id(nama), peserta:peserta_id(nama, nama_hanzi, no_whatsapp, alamat, nomor_tt)",
+        "nomor_kupon, status, assigned_at, redeemed_at, kelompok:kelompok_id(nama), donasi(nomor_tt, anggota(nama, nama_hanzi, no_whatsapp, alamat))",
       )
+      .eq("kegiatan_id", kegiatanId)
       .order("nomor_kupon", { ascending: true })
       .range(from, from + PAGE - 1);
     if (kelompokId) query = query.eq("kelompok_id", kelompokId);
@@ -82,8 +92,8 @@ async function fetchRows(kelompokId: string, status: StatusFilter, q: string): P
 function sortByNama(rows: KuponExportRow[]): KuponExportRow[] {
   const collator = new Intl.Collator("id", { sensitivity: "base", numeric: true });
   return [...rows].sort((a, b) => {
-    const na = a.peserta?.nama ?? "";
-    const nb = b.peserta?.nama ?? "";
+    const na = a.donasi?.anggota?.nama ?? "";
+    const nb = b.donasi?.anggota?.nama ?? "";
     if (!na !== !nb) return na ? -1 : 1;
     const byNama = collator.compare(na, nb);
     return byNama !== 0 ? byNama : collator.compare(a.nomor_kupon, b.nomor_kupon);
@@ -101,8 +111,12 @@ export async function GET(req: NextRequest) {
     : "assigned";
   const q = (sp.get("q") ?? "").trim();
   const format = sp.get("format") === "csv" ? "csv" : "xlsx";
+  const { kegiatan } = await pilihKegiatan(sp.get("kegiatan"));
+  if (!kegiatan) {
+    return new NextResponse("Belum ada kegiatan.", { status: 400, headers: { "Content-Type": "text/plain; charset=utf-8" } });
+  }
 
-  const rows = sortByNama(await fetchRows(kelompokId, status, q));
+  const rows = sortByNama(await fetchRows(kegiatan.id, kelompokId, status, q));
 
   const header = [
     "No",
@@ -118,19 +132,22 @@ export async function GET(req: NextRequest) {
     "Waktu Tukar",
   ] as const;
 
-  const data = rows.map((r, i) => ({
+  const data = rows.map((r, i) => {
+    const p = pemilik(r);
+    return {
     No: i + 1,
-    Nama: r.peserta?.nama ?? "-",
-    "Nama Hanzi": r.peserta?.nama_hanzi ?? "",
-    "Nomor TT": r.peserta?.nomor_tt ?? "",
+    Nama: p?.nama ?? "-",
+    "Nama Hanzi": p?.nama_hanzi ?? "",
+    "Nomor TT": p?.nomor_tt ?? "",
     Buku: r.kelompok?.nama ?? "-",
     "Nomor Kupon (Barcode)": r.nomor_kupon,
     Status: STATUS_LABEL[r.status],
-    "No WhatsApp": r.peserta?.no_whatsapp ?? "",
-    Alamat: r.peserta?.alamat ?? "",
+    "No WhatsApp": p?.no_whatsapp ?? "",
+    Alamat: p?.alamat ?? "",
     "Waktu Assign": formatTanggalJamWITA(r.assigned_at),
     "Waktu Tukar": formatTanggalJamWITA(r.redeemed_at),
-  }));
+    };
+  });
 
   const filename = `kupon-${STATUS_SLUG[status]}_${dateKeyWITA(new Date().toISOString())}.${format}`;
 
@@ -172,12 +189,13 @@ export async function GET(req: NextRequest) {
     perBuku.set(nama, (perBuku.get(nama) ?? 0) + 1);
   }
   const collator = new Intl.Collator("id", { sensitivity: "base", numeric: true });
-  const pesertaUnik = new Set(rows.map((r) => r.peserta?.nama).filter(Boolean)).size;
+  const pesertaUnik = new Set(rows.map((r) => r.donasi?.anggota?.nama).filter(Boolean)).size;
   const ringkasan: Array<Record<string, string | number>> = [...perBuku.entries()]
     .sort((a, b) => collator.compare(a[0], b[0]))
     .map(([Buku, jml]) => ({ Buku, "Jumlah Kupon": jml }));
   ringkasan.push({ Buku: "TOTAL", "Jumlah Kupon": rows.length });
-  ringkasan.push({ Buku: "Jumlah peserta (nama unik)", "Jumlah Kupon": pesertaUnik });
+  ringkasan.push({ Buku: "Jumlah anggota (nama unik)", "Jumlah Kupon": pesertaUnik });
+  ringkasan.push({ Buku: `Kegiatan: ${kegiatan.nama}`, "Jumlah Kupon": "" });
 
   const wsR = XLSX.utils.json_to_sheet(ringkasan, { header: ["Buku", "Jumlah Kupon"] });
   wsR["!cols"] = [{ wch: 34 }, { wch: 16 }];

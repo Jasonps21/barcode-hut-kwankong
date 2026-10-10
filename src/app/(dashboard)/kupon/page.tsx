@@ -10,6 +10,7 @@ import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { ConfirmButton } from "@/components/ui/confirm-button";
 import { formatTanggalJamWITA } from "@/lib/utils";
+import { pilihKegiatan } from "@/lib/kegiatan";
 import type { KuponStatus } from "@/types/database";
 import { resetRedeemKuponAction } from "./actions";
 
@@ -19,7 +20,7 @@ interface KuponRow {
   status: KuponStatus;
   assigned_at: string | null;
   redeemed_at: string | null;
-  peserta: { nama: string; nomor_tt: number | null } | null;
+  donasi: { nomor_tt: number | null; anggota: { nama: string } | null } | null;
 }
 
 const PER_OPTIONS = ["50", "100", "200", "500"] as const;
@@ -34,19 +35,33 @@ function statusBadge(status: KuponStatus) {
 }
 
 export default async function KuponPage(props: {
-  searchParams: Promise<{ kelompok?: string; status?: string; q?: string; per?: string; page?: string }>;
+  searchParams: Promise<{ kegiatan?: string; kelompok?: string; status?: string; q?: string; per?: string; page?: string }>;
 }) {
   await requireProfile(["admin"]);
   const sp = await props.searchParams;
   const supabase = await createClient();
+  const { kegiatan, semua } = await pilihKegiatan(sp.kegiatan);
+  // Hanya kegiatan yang memakai kupon yang relevan di halaman ini.
+  const semuaKegiatan = semua.filter((k) => k.pakai_kupon || k.id === kegiatan?.id);
+  // UUID nol saat belum ada kegiatan: query jadi kosong, bukan error uuid tidak valid.
+  const kegiatanId = kegiatan?.id ?? "00000000-0000-0000-0000-000000000000";
 
-  const { data: kelompokData } = await supabase
-    .from("kelompok")
-    .select("id, nama, prefix, range_start, range_end, padding")
-    .order("created_at", { ascending: true });
-  const kelompokList = (kelompokData ?? []) as Array<{
-    id: string; nama: string; prefix: string; range_start: number; range_end: number; padding: number;
-  }>;
+  const [{ data: kelompokData }, { data: rangeData }] = await Promise.all([
+    supabase.from("kelompok").select("id, nama").order("created_at", { ascending: true }),
+    supabase
+      .from("kegiatan_kupon_range")
+      .select("kelompok_id, prefix, range_start, range_end, padding")
+      .eq("kegiatan_id", kegiatanId),
+  ]);
+  const rangeMap = new Map(
+    ((rangeData ?? []) as Array<{ kelompok_id: string; prefix: string; range_start: number; range_end: number; padding: number }>)
+      .map((r) => [r.kelompok_id, r]),
+  );
+  // Rentang kupon berbeda tiap kegiatan; yang ditampilkan milik kegiatan terpilih.
+  const kelompokList = ((kelompokData ?? []) as Array<{ id: string; nama: string }>).map((k) => ({
+    ...k,
+    range: rangeMap.get(k.id) ?? null,
+  }));
 
   // Kelompok yang dipilih — default ke kelompok pertama supaya halaman selalu
   // menampilkan data yang berarti untuk cross-check.
@@ -64,11 +79,15 @@ export default async function KuponPage(props: {
 
   // Ringkasan jumlah per status untuk kelompok terpilih (semua halaman).
   const kelompokScope = selectedKelompok ?? "";
+  const hitung = (status?: string) => {
+    let q = supabase.from("kupon").select("id", { count: "exact", head: true })
+      .eq("kegiatan_id", kegiatanId)
+      .eq("kelompok_id", kelompokScope);
+    if (status) q = q.eq("status", status);
+    return q;
+  };
   const [totalRes, availRes, assignedRes, redeemedRes] = await Promise.all([
-    supabase.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", kelompokScope),
-    supabase.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", kelompokScope).eq("status", "available"),
-    supabase.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", kelompokScope).eq("status", "assigned"),
-    supabase.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", kelompokScope).eq("status", "redeemed"),
+    hitung(), hitung("available"), hitung("assigned"), hitung("redeemed"),
   ]);
   const summary = {
     total: totalRes.count ?? 0,
@@ -80,7 +99,8 @@ export default async function KuponPage(props: {
   // Daftar kupon (dengan filter & paging).
   let listQuery = supabase
     .from("kupon")
-    .select("id, nomor_kupon, status, assigned_at, redeemed_at, peserta:peserta_id(nama, nomor_tt)", { count: "exact" })
+    .select("id, nomor_kupon, status, assigned_at, redeemed_at, donasi(nomor_tt, anggota(nama))", { count: "exact" })
+    .eq("kegiatan_id", kegiatanId)
     .order("nomor_kupon", { ascending: true });
   if (selectedKelompok) listQuery = listQuery.eq("kelompok_id", selectedKelompok);
   if (status !== "all") listQuery = listQuery.eq("status", status);
@@ -96,6 +116,7 @@ export default async function KuponPage(props: {
 
   function hrefWith(overrides: Record<string, string | undefined>): string {
     const params = new URLSearchParams();
+    if (kegiatanId) params.set("kegiatan", kegiatanId);
     if (selectedKelompok) params.set("kelompok", selectedKelompok);
     if (status !== "all") params.set("status", status);
     if (q) params.set("q", q);
@@ -112,6 +133,7 @@ export default async function KuponPage(props: {
   // bukan hanya halaman yang tampil — jadi seluruh baris hasil filter ikut terunduh.
   function exportHref(format: "xlsx" | "csv"): string {
     const params = new URLSearchParams();
+    if (kegiatanId) params.set("kegiatan", kegiatanId);
     if (selectedKelompok) params.set("kelompok", selectedKelompok);
     params.set("status", status);
     if (q) params.set("q", q);
@@ -125,8 +147,9 @@ export default async function KuponPage(props: {
     : status === "available" ? "belum terassign"
     : "semua status";
 
-  const rangeLabel = kelompok
-    ? `${kelompok.prefix}${String(kelompok.range_start).padStart(kelompok.padding, "0")} – ${kelompok.prefix}${String(kelompok.range_end).padStart(kelompok.padding, "0")}`
+  const r = kelompok?.range;
+  const rangeLabel = r
+    ? `${r.prefix}${String(r.range_start).padStart(r.padding, "0")} – ${r.prefix}${String(r.range_end).padStart(r.padding, "0")}`
     : null;
 
   return (
@@ -134,7 +157,7 @@ export default async function KuponPage(props: {
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Cek Kupon</h1>
         <p className="text-sm text-muted-foreground">
-          Cross-check kupon per kelompok: mana yang sudah terassign, sudah ditukar, dan yang masih kosong.
+          Cross-check kupon {kegiatan ? `kegiatan ${kegiatan.nama} ` : ""}per kelompok: mana yang sudah terassign, sudah ditukar, dan yang masih kosong.
         </p>
       </div>
 
@@ -180,6 +203,14 @@ export default async function KuponPage(props: {
 
           {/* Filter & pencarian */}
           <form className="flex flex-wrap items-end gap-2">
+            <div className="flex-1 space-y-1 sm:flex-none">
+              <label htmlFor="kegiatan" className="text-xs font-medium text-muted-foreground">Kegiatan</label>
+              <Select id="kegiatan" name="kegiatan" defaultValue={kegiatanId} className="w-full sm:w-56">
+                {semuaKegiatan.map((k) => (
+                  <option key={k.id} value={k.id}>{k.nama}{k.aktif ? " (berjalan)" : ""}</option>
+                ))}
+              </Select>
+            </div>
             <div className="flex-1 space-y-1 sm:flex-none">
               <label htmlFor="kelompok" className="text-xs font-medium text-muted-foreground">Kelompok</label>
               <Select id="kelompok" name="kelompok" defaultValue={selectedKelompok ?? ""} className="w-full sm:w-52">
@@ -246,7 +277,7 @@ export default async function KuponPage(props: {
                   <TableRow>
                     <TableHead>Nomor Kupon</TableHead>
                     <TableHead>Status</TableHead>
-                    <TableHead>Peserta</TableHead>
+                    <TableHead>Anggota</TableHead>
                     <TableHead>Waktu Assign</TableHead>
                     <TableHead>Waktu Tukar</TableHead>
                     <TableHead className="text-right">Aksi</TableHead>
@@ -265,11 +296,11 @@ export default async function KuponPage(props: {
                       <TableCell className="font-mono font-medium">{k.nomor_kupon}</TableCell>
                       <TableCell>{statusBadge(k.status)}</TableCell>
                       <TableCell>
-                        {k.peserta ? (
+                        {k.donasi ? (
                           <div>
-                            <div className="text-sm font-medium">{k.peserta.nama}</div>
-                            {k.peserta.nomor_tt != null && (
-                              <div className="font-mono text-xs text-muted-foreground">TT {k.peserta.nomor_tt}</div>
+                            <div className="text-sm font-medium">{k.donasi.anggota?.nama ?? "-"}</div>
+                            {k.donasi.nomor_tt != null && (
+                              <div className="font-mono text-xs text-muted-foreground">TT {k.donasi.nomor_tt}</div>
                             )}
                           </div>
                         ) : (
@@ -286,7 +317,7 @@ export default async function KuponPage(props: {
                               type="submit"
                               variant="ghost"
                               size="sm"
-                              message={`Batalkan penukaran kupon ${k.nomor_kupon}${k.peserta ? ` (${k.peserta.nama})` : ""}?\n\nKupon akan kembali berstatus "terassign" dan bisa discan ulang di konter. Aksi ini tercatat di Log Aktivitas.`}
+                              message={`Batalkan penukaran kupon ${k.nomor_kupon}${k.donasi?.anggota ? ` (${k.donasi.anggota.nama})` : ""}?\n\nKupon akan kembali berstatus "terassign" dan bisa discan ulang di konter. Aksi ini tercatat di Log Aktivitas.`}
                               className="h-7 gap-1 px-2 text-destructive hover:bg-destructive/10"
                             >
                               <RotateCcw /> Batalkan

@@ -17,11 +17,16 @@ import { PilihAntre, type KandidatRow } from "./pilih-antre";
 
 interface WaLogRow {
   id: string;
-  peserta_id: string | null;
+  donasi_id: string | null;
   status: string;
   fonnte_response: unknown;
   error_message: string | null;
   sent_at: string;
+  donasi: {
+    anggota: { id: string; nama: string; no_whatsapp: string | null } | null;
+    kelompok: { nama: string } | null;
+  } | null;
+  /** Log sebelum model multi-kegiatan yang pesertanya tidak punya setoran. */
   peserta: { nama: string; no_whatsapp: string; kelompok: { nama: string } | null } | null;
 }
 
@@ -66,20 +71,21 @@ export default async function WaLogPage(props: {
   const perNum = Number(per);
   const page = Math.max(1, Number(sp.page ?? "1") || 1);
 
-  // Saat mencari peserta, pakai inner join agar count & paginasi akurat
-  // (baris log tanpa peserta cocok ikut terbuang oleh `!inner`).
-  const pesertaJoin = q ? "peserta!inner" : "peserta";
+  // Saat mencari anggota, pakai inner join agar count & paginasi akurat
+  // (baris log tanpa anggota cocok ikut terbuang oleh `!inner`).
+  const donasiJoin = q ? "donasi!inner" : "donasi";
+  const anggotaJoin = q ? "anggota!inner" : "anggota";
   const query = admin
     .from("wa_log")
     .select(
-      `id, peserta_id, status, fonnte_response, error_message, sent_at, ${pesertaJoin}(nama, no_whatsapp, kelompok(nama))`,
+      `id, donasi_id, status, fonnte_response, error_message, sent_at, ${donasiJoin}(${anggotaJoin}(id, nama, no_whatsapp), kelompok:kelompok_id(nama)), peserta(nama, no_whatsapp, kelompok(nama))`,
       { count: "exact" },
     )
     .order("sent_at", { ascending: false });
   if (status !== "all") query.eq("status", status);
   if (q) {
     const like = `%${q}%`;
-    query.or(`nama.ilike.${like},no_whatsapp.ilike.${like}`, { referencedTable: "peserta" });
+    query.or(`nama.ilike.${like},no_whatsapp.ilike.${like}`, { referencedTable: "donasi.anggota" });
   }
   query.range((page - 1) * perNum, page * perNum - 1);
 
@@ -96,13 +102,12 @@ export default async function WaLogPage(props: {
     ? (await admin.from("wa_log").select("id", { count: "exact", head: true }).eq("status", "failed")).count ?? 0
     : null;
 
-  // Ringkasan antrean pengiriman, dihitung dari tabel peserta (bukan log).
+  // Ringkasan antrean pengiriman, dihitung dari setoran (bukan log).
   const hitungPeserta = async (waStatus: string) =>
     (await admin
-      .from("peserta")
+      .from("donasi")
       .select("id", { count: "exact", head: true })
-      .eq("wa_status", waStatus)
-      .not("registered_at", "is", null)).count ?? 0;
+      .eq("wa_status", waStatus)).count ?? 0;
 
   const pesertaGagal = await hitungPeserta("failed");
   const pesertaAntre = await hitungPeserta("pending");
@@ -112,10 +117,10 @@ export default async function WaLogPage(props: {
   const kecuali = await ringkasanPengecualian();
 
   // ---------------------------------------------------------------------
-  // Pemilih peserta untuk antre ulang.
+  // Pemilih setoran untuk antre ulang.
   //
   // Daftarnya diambil terpisah dari tabel log karena yang dipilih adalah
-  // PESERTA, bukan baris log: satu peserta bisa punya belasan baris log gagal,
+  // SETORAN, bukan baris log: satu setoran bisa punya belasan baris log gagal,
   // dan mengantre "baris log" tidak punya arti.
   // ---------------------------------------------------------------------
   const aStatusOptions = ["failed", "pending", "not_sent", "sent", "dikecualikan", "all"] as const;
@@ -128,13 +133,13 @@ export default async function WaLogPage(props: {
   const A_PER = 100;
 
   const kandidatQuery = admin
-    .from("peserta")
+    .from("donasi_lengkap")
     .select(
-      "id, nama, no_whatsapp, wa_status, wa_dikecualikan, wa_alasan_kecuali, kelompok(nama)",
+      "id, nama, no_whatsapp, wa_status, wa_dikecualikan, wa_alasan_kecuali, kelompok:kelompok_id(nama)",
       { count: "exact" },
     )
-    .not("registered_at", "is", null)
-    .order("registered_at", { ascending: true });
+    .order("registered_at", { ascending: true })
+    .order("id", { ascending: true });
 
   if (aStat === "dikecualikan") kandidatQuery.eq("wa_dikecualikan", true);
   else if (aStat !== "all") kandidatQuery.eq("wa_status", aStat).eq("wa_dikecualikan", false);
@@ -230,7 +235,7 @@ export default async function WaLogPage(props: {
         <CardHeader>
           <CardTitle className="text-base">Antre ulang pengiriman</CardTitle>
           <CardDescription>
-            Pilih peserta yang mau dikirimi ulang, lalu tekan Antrekan. Pengirimannya
+            Pilih setoran yang mau dikirimi ulang, lalu tekan Antrekan. Pengirimannya
             dilakukan cron secara bertahap — maksimal {kuota.batas} pesan per 24 jam.
             Peserta yang sudah berhasil terkirim, ditandai jangan-kirim, atau bernomor
             tidak valid tidak akan ikut terkirim meskipun tercentang.
@@ -257,7 +262,7 @@ export default async function WaLogPage(props: {
               variant="outline"
               size="sm"
               message={
-                "Periksa seluruh peserta dan tandai yang nomornya tidak valid?\n\n" +
+                "Periksa seluruh anggota dan tandai yang nomornya tidak valid?\n\n" +
                 "Tidak ada pesan yang dikirim. Tandanya bisa dilepas lagi kapan saja."
               }
             >
@@ -268,7 +273,7 @@ export default async function WaLogPage(props: {
           {/* Filter pemilih. Terpisah dari filter tabel log di bawah. */}
           <form className="flex flex-wrap items-end gap-2">
             <div className="space-y-1">
-              <label htmlFor="aq" className="text-xs font-medium text-muted-foreground">Cari peserta</label>
+              <label htmlFor="aq" className="text-xs font-medium text-muted-foreground">Cari anggota</label>
               <div className="relative">
                 <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
                 <Input id="aq" name="aq" defaultValue={aq} placeholder="Nama / no HP" className="w-full pl-9 sm:w-56" />
@@ -303,8 +308,8 @@ export default async function WaLogPage(props: {
           <div className="flex flex-wrap items-center justify-between gap-2 text-sm text-muted-foreground">
             <span>
               {kandidatTotal === 0
-                ? "Tidak ada peserta yang cocok"
-                : `Menampilkan ${(aPage - 1) * A_PER + 1}–${Math.min(aPage * A_PER, kandidatTotal)} dari ${kandidatTotal} peserta`}
+                ? "Tidak ada setoran yang cocok"
+                : `Menampilkan ${(aPage - 1) * A_PER + 1}–${Math.min(aPage * A_PER, kandidatTotal)} dari ${kandidatTotal} setoran`}
             </span>
             {kandidatHalaman > 1 && (
               <div className="flex items-center gap-2">
@@ -332,7 +337,7 @@ export default async function WaLogPage(props: {
       {/* Filter & pencarian */}
       <form className="flex flex-wrap items-end gap-2">
         <div className="flex-1 space-y-1 sm:flex-none">
-          <label htmlFor="q" className="text-xs font-medium text-muted-foreground">Cari peserta</label>
+          <label htmlFor="q" className="text-xs font-medium text-muted-foreground">Cari anggota</label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input id="q" name="q" defaultValue={q} placeholder="Nama / no HP" className="w-full pl-9 sm:w-64" />
@@ -380,14 +385,17 @@ export default async function WaLogPage(props: {
                   </TableCell>
                 </TableRow>
               )}
-              {rows.map((r) => (
+              {rows.map((r) => {
+                const orang = r.donasi?.anggota ?? r.peserta;
+                const buku = r.donasi?.kelompok?.nama ?? r.peserta?.kelompok?.nama ?? "";
+                return (
                 <TableRow key={r.id}>
                   <TableCell className="whitespace-nowrap text-xs">{fmtDateTime(r.sent_at)}</TableCell>
                   <TableCell>
-                    <div className="text-sm font-medium">{r.peserta?.nama ?? <span className="text-muted-foreground">(peserta dihapus)</span>}</div>
-                    <div className="text-xs text-muted-foreground">{r.peserta?.kelompok?.nama ?? ""}</div>
+                    <div className="text-sm font-medium">{orang?.nama ?? <span className="text-muted-foreground">(setoran dihapus)</span>}</div>
+                    <div className="text-xs text-muted-foreground">{buku}</div>
                   </TableCell>
-                  <TableCell className="font-mono text-xs">{r.peserta?.no_whatsapp ?? "-"}</TableCell>
+                  <TableCell className="font-mono text-xs">{orang?.no_whatsapp ?? "-"}</TableCell>
                   <TableCell>{statusBadge(r.status)}</TableCell>
                   <TableCell className="max-w-md">
                     {r.error_message
@@ -395,7 +403,8 @@ export default async function WaLogPage(props: {
                       : <span className="break-all font-mono text-xs text-muted-foreground">{summarizeResponse(r.fonnte_response)}</span>}
                   </TableCell>
                 </TableRow>
-              ))}
+                );
+              })}
             </TableBody>
           </Table>
         </CardContent>

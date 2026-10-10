@@ -4,22 +4,19 @@ import { useActionState, useMemo, useState } from "react";
 import { Loader2, Save } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RupiahInput } from "@/components/ui/rupiah-input";
 import { Label } from "@/components/ui/label";
 import { Combobox } from "@/components/ui/combobox";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { daftarProvinsi, kotaUntukProvinsi, semuaKota } from "@/lib/wilayah";
-import { updatePesertaAction, createJenisUsahaAction, type UpdatePesertaState } from "../../actions";
+import { updateAnggotaAction, createJenisUsahaAction, type AksiState } from "../../actions";
 import { NomorUsahaEditor, emptyNomorUsahaRow, type NomorUsahaRow } from "../../nomor-usaha-editor";
 
-export interface EditPeserta {
+export interface EditAnggota {
   id: string;
   nama: string;
   nama_hanzi: string | null;
-  alamat: string;
-  no_whatsapp: string;
-  nominal_donasi: number | string;
-  metode_bayar: string | null;
+  alamat: string | null;
+  no_whatsapp: string | null;
   kota_kabupaten: string | null;
   provinsi: string | null;
   jenis_usaha_id: string | null;
@@ -32,25 +29,24 @@ export interface EditNomorUsaha {
   sama_dengan_wa: boolean;
 }
 
-export function EditPesertaForm({
-  peserta,
+export function EditAnggotaForm({
+  anggota,
   jenisUsahaOptions = [],
   nomorUsahaAwal = [],
 }: {
-  peserta: EditPeserta;
+  anggota: EditAnggota;
   jenisUsahaOptions?: { id: string; nama: string }[];
   nomorUsahaAwal?: EditNomorUsaha[];
 }) {
-  const [state, action, pending] = useActionState<UpdatePesertaState, FormData>(updatePesertaAction, undefined);
-  const [namaHanzi, setNamaHanzi] = useState(peserta.nama_hanzi ?? "");
-  const [metode, setMetode] = useState(peserta.metode_bayar ?? "");
+  const [state, action, pending] = useActionState<AksiState, FormData>(updateAnggotaAction, undefined);
+  const [namaHanzi, setNamaHanzi] = useState(anggota.nama_hanzi ?? "");
   const pinyinPreview = useMemo(() => hanziToPinyin(namaHanzi), [namaHanzi]);
 
-  const [provinsi, setProvinsi] = useState(peserta.provinsi ?? "");
-  const [kotaKabupaten, setKotaKabupaten] = useState(peserta.kota_kabupaten ?? "");
+  const [provinsi, setProvinsi] = useState(anggota.provinsi ?? "");
+  const [kotaKabupaten, setKotaKabupaten] = useState(anggota.kota_kabupaten ?? "");
   const [jenisUsahaList, setJenisUsahaList] = useState(jenisUsahaOptions);
-  const [jenisUsahaId, setJenisUsahaId] = useState(peserta.jenis_usaha_id ?? "");
-  const [noWhatsapp, setNoWhatsapp] = useState(peserta.no_whatsapp ?? "");
+  const [jenisUsahaId, setJenisUsahaId] = useState(anggota.jenis_usaha_id ?? "");
+  const [noWhatsapp, setNoWhatsapp] = useState(anggota.no_whatsapp ?? "");
   const [nomorUsaha, setNomorUsaha] = useState<NomorUsahaRow[]>(
     nomorUsahaAwal.length
       ? nomorUsahaAwal.map((n) => ({ label: n.label ?? "", nomor: n.nomor, samaWa: n.sama_dengan_wa }))
@@ -71,12 +67,12 @@ export function EditPesertaForm({
 
   return (
     <form action={action} className="space-y-6">
-      <input type="hidden" name="peserta_id" value={peserta.id} />
+      <input type="hidden" name="anggota_id" value={anggota.id} />
 
       <div className="grid gap-4 md:grid-cols-2">
         <div className="space-y-2">
           <Label htmlFor="nama">Nama / Toko</Label>
-          <Input id="nama" name="nama" defaultValue={peserta.nama} required />
+          <Input id="nama" name="nama" defaultValue={anggota.nama} required />
         </div>
         <div className="space-y-2">
           <Label htmlFor="no_whatsapp">No WhatsApp</Label>
@@ -98,7 +94,7 @@ export function EditPesertaForm({
         </div>
         <div className="space-y-2 md:col-span-2">
           <Label htmlFor="alamat">Alamat</Label>
-          <Input id="alamat" name="alamat" defaultValue={peserta.alamat} required />
+          <Input id="alamat" name="alamat" defaultValue={anggota.alamat ?? ""} required />
         </div>
         <div className="space-y-2">
           <Label>Provinsi</Label>
@@ -142,30 +138,8 @@ export function EditPesertaForm({
         </div>
         <div className="space-y-2">
           <Label htmlFor="keterangan">Keterangan (merk/tipe barang)</Label>
-          <Input id="keterangan" name="keterangan" defaultValue={peserta.keterangan ?? ""} placeholder="mis. TV LG, Genset Yamaha" />
+          <Input id="keterangan" name="keterangan" defaultValue={anggota.keterangan ?? ""} placeholder="mis. TV LG, Genset Yamaha" />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="nominal_donasi">Nominal Donasi</Label>
-          <RupiahInput id="nominal_donasi" name="nominal_donasi" defaultValue={Number(peserta.nominal_donasi ?? 0) || ""} placeholder="0" />
-        </div>
-        <div className="space-y-2">
-          <Label>Metode Bayar</Label>
-          <div className="flex gap-2">
-            {(["cash", "transfer"] as const).map((m) => (
-              <label key={m} className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium capitalize transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground">
-                <input type="radio" name="metode_bayar" value={m} defaultChecked={peserta.metode_bayar === m} className="sr-only" onChange={() => setMetode(m)} />
-                {m}
-              </label>
-            ))}
-          </div>
-        </div>
-        {metode === "transfer" && (
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="bukti">Ganti Bukti Transfer (opsional)</Label>
-            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" />
-            <p className="text-xs text-muted-foreground">Kosongkan jika tidak ingin mengganti bukti yang sudah ada.</p>
-          </div>
-        )}
       </div>
 
       <NomorUsahaEditor noWhatsapp={noWhatsapp} rows={nomorUsaha} onChange={setNomorUsaha} />

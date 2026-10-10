@@ -3,7 +3,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 
 /** Direktori ini tidak dilindungi login, jadi query-nya sengaja hanya menyentuh
  *  kolom yang memang ditujukan untuk publik: nama usaha, jenis, alamat, dan
- *  nomor usaha. Kolom donasi/kupon di tabel `peserta` tidak pernah ikut. */
+ *  nomor usaha milik anggota aktif. Tabel setoran & kupon tidak pernah disentuh. */
 
 export interface NomorUsaha {
   label: string | null;
@@ -18,7 +18,7 @@ export interface UsahaRow {
   provinsi: string | null;
   keterangan: string | null;
   jenis_usaha: { nama: string } | null;
-  peserta_nomor_usaha: NomorUsaha[];
+  anggota_nomor_usaha: NomorUsaha[];
 }
 
 export interface Kategori {
@@ -88,8 +88,9 @@ export async function ambilRingkasan(): Promise<Ringkasan> {
   const [jenisRes, pesertaRes] = await Promise.all([
     admin.from("jenis_usaha").select("id, nama").order("nama"),
     admin
-      .from("peserta")
+      .from("anggota")
       .select("nama, jenis_usaha_id, kota_kabupaten")
+      .eq("aktif", true)
       .not("jenis_usaha_id", "is", null)
       // Batas bawaan PostgREST 1000 baris; direktori bisa lewat angka itu dan
       // hitungannya akan diam-diam salah kalau tidak dinaikkan.
@@ -154,10 +155,11 @@ export async function cariUsaha(q: string): Promise<UsahaRow[]> {
   const tokens = tokenize(q);
 
   let query = admin
-    .from("peserta")
+    .from("anggota")
     .select(
-      "id, nama, alamat, kota_kabupaten, provinsi, keterangan, jenis_usaha(nama), peserta_nomor_usaha(label, nomor)",
+      "id, nama, alamat, kota_kabupaten, provinsi, keterangan, jenis_usaha(nama), anggota_nomor_usaha(label, nomor)",
     )
+    .eq("aktif", true)
     .not("jenis_usaha_id", "is", null);
 
   // Setiap kata harus cocok di suatu tempat (AND antar kata, OR antar kolom per kata) —
@@ -181,7 +183,7 @@ export async function cariUsaha(q: string): Promise<UsahaRow[]> {
 
   const { data } = await query
     .order("nama")
-    .order("urutan", { referencedTable: "peserta_nomor_usaha" })
+    .order("urutan", { referencedTable: "anggota_nomor_usaha" })
     .limit(100);
 
   return (data ?? []) as unknown as UsahaRow[];

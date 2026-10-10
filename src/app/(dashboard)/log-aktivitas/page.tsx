@@ -17,6 +17,18 @@ const AKSI_LABEL: Record<string, string> = {
   create_peserta: "Tambah Peserta",
   update_peserta: "Ubah Peserta",
   register_peserta_impor: "Daftar via Scan",
+  buat_anggota: "Tambah Anggota",
+  ubah_anggota: "Ubah Anggota",
+  pindah_buku: "Pindah Buku",
+  tambah_donasi: "Tambah Setoran",
+  ubah_donasi: "Ubah Setoran",
+  hapus_donasi: "Hapus Setoran",
+  buat_kegiatan: "Tambah Kegiatan",
+  aktifkan_kegiatan: "Aktifkan Kegiatan",
+  kegiatan_kupon_nyala: "Kupon Dinyalakan",
+  kegiatan_kupon_mati: "Kupon Dimatikan",
+  kecualikan_wa: "Jangan Kirim WA",
+  batal_kecualikan_wa: "Izinkan WA",
   create_kelompok: "Tambah Kelompok",
   redeem_kupon: "Tukar Kupon",
   batal_redeem_kupon: "Batal Tukar Kupon",
@@ -32,9 +44,9 @@ function aksiBadge(aksi: string) {
   // mengembalikan data, jadi harus gampang dicari di antara log biasa.
   const variant = aksi.startsWith("batal")
     ? "destructive"
-    : aksi.startsWith("update")
+    : aksi.startsWith("update") || aksi.startsWith("ubah") || aksi.startsWith("hapus")
       ? "warning"
-      : aksi.startsWith("create") || aksi.startsWith("register")
+      : aksi.startsWith("create") || aksi.startsWith("register") || aksi.startsWith("buat") || aksi.startsWith("tambah")
         ? "success"
         : "secondary";
   return <Badge variant={variant as "destructive" | "warning" | "success" | "secondary"}>{label}</Badge>;

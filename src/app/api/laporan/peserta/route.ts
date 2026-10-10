@@ -12,31 +12,61 @@ function csvEscape(v: unknown): string {
   return s;
 }
 
+/**
+ * Ekspor SEMUA anggota, satu baris per orang, dengan total setoran tiap
+ * kegiatan sebagai kolom terpisah — supaya riwayat lintas acara terbaca
+ * dalam satu lembar tanpa menggandakan baris orang yang sama.
+ */
 export async function GET() {
   await requireProfile(["admin"]);
   const admin = createAdminClient();
 
-  // "Export SEMUA peserta" harus benar-benar semua: `select()` biasa berhenti
-  // di 1000 baris.
-  const rows = await ambilSemuaBaris<{
-    nama: string; alamat: string; no_whatsapp: string;
-    nominal_donasi: number | string; wa_status: string;
-    wa_sent_at: string | null; created_at: string;
-    kelompok: { nama: string } | null;
-  }>(() =>
-    admin
-      .from("peserta")
-      .select("nama, alamat, no_whatsapp, nominal_donasi, wa_status, wa_sent_at, created_at, kelompok(nama)")
-      .order("created_at", { ascending: false })
-      .order("id", { ascending: true }) as never,
-  );
+  // `select()` biasa berhenti di 1000 baris; kedua tabel sudah lewat angka itu.
+  const [anggota, donasi, { data: kegiatanData }] = await Promise.all([
+    ambilSemuaBaris<{
+      id: string; nama: string; nama_hanzi: string | null; alamat: string | null;
+      no_whatsapp: string | null; kota_kabupaten: string | null; aktif: boolean;
+      wa_dikecualikan: boolean; created_at: string; kelompok: { nama: string } | null;
+    }>(() =>
+      admin
+        .from("anggota")
+        .select("id, nama, nama_hanzi, alamat, no_whatsapp, kota_kabupaten, aktif, wa_dikecualikan, created_at, kelompok:buku_id(nama)")
+        .order("nama", { ascending: true })
+        .order("id", { ascending: true }) as never,
+    ),
+    ambilSemuaBaris<{ anggota_id: string; kegiatan_id: string; nominal: number | string; tanggal: string }>(() =>
+      admin
+        .from("donasi")
+        .select("anggota_id, kegiatan_id, nominal, tanggal")
+        .order("id", { ascending: true }) as never,
+    ),
+    admin.from("kegiatan").select("id, nama").order("tahun", { ascending: true, nullsFirst: true }).order("created_at"),
+  ]);
 
-  const header = ["Nama", "Alamat", "No WhatsApp", "Nominal Donasi", "Kelompok", "Status WA", "Dikirim Pada", "Dibuat Pada"];
-  const lines = [header.join(",")];
-  for (const r of rows) {
+  const kegiatan = (kegiatanData ?? []) as Array<{ id: string; nama: string }>;
+  const total = new Map<string, number>(); // `${anggota}|${kegiatan}` -> nominal
+  const terakhir = new Map<string, string>();
+  for (const d of donasi) {
+    const key = `${d.anggota_id}|${d.kegiatan_id}`;
+    total.set(key, (total.get(key) ?? 0) + Number(d.nominal ?? 0));
+    const t = terakhir.get(d.anggota_id);
+    if (!t || d.tanggal > t) terakhir.set(d.anggota_id, d.tanggal);
+  }
+
+  const header = [
+    "Nama", "Nama Hanzi", "Alamat", "Kota/Kabupaten", "No WhatsApp", "Buku", "Status",
+    ...kegiatan.map((k) => `Setoran ${k.nama}`),
+    "Setoran Terakhir", "Terdaftar Sejak",
+  ];
+  const lines = [header.map(csvEscape).join(",")];
+  for (const a of anggota) {
     lines.push([
-      r.nama, r.alamat, r.no_whatsapp, r.nominal_donasi,
-      r.kelompok?.nama ?? "", r.wa_status, r.wa_sent_at ?? "", r.created_at,
+      a.nama, a.nama_hanzi ?? "", a.alamat ?? "", a.kota_kabupaten ?? "", a.no_whatsapp ?? "",
+      a.kelompok?.nama ?? "",
+      a.aktif ? (a.wa_dikecualikan ? "Aktif (jangan kirim WA)" : "Aktif") : "Tidak aktif",
+      ...kegiatan.map((k) => total.get(`${a.id}|${k.id}`) ?? 0),
+      terakhir.get(a.id) ?? "",
+      a.created_at,
     ].map(csvEscape).join(","));
   }
 
@@ -44,7 +74,7 @@ export async function GET() {
   return new NextResponse(csv, {
     headers: {
       "Content-Type": "text/csv; charset=utf-8",
-      "Content-Disposition": 'attachment; filename="semua-peserta.csv"',
+      "Content-Disposition": 'attachment; filename="semua-anggota.csv"',
     },
   });
 }

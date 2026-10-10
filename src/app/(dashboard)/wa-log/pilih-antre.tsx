@@ -98,7 +98,7 @@ export function PilihAntre({ rows, batas }: { rows: KandidatRow[]; batas: number
             variant="outline"
             disabled={jumlahAntre === 0}
             message={
-              `Antrekan ${jumlahAntre} peserta terpilih?\n\n` +
+              `Antrekan ${jumlahAntre} setoran terpilih?\n\n` +
               "Setiap pesan yang benar-benar terkirim dikenai biaya. " +
               `Cron mengirimnya bertahap, maksimal ${batas} per 24 jam.\n\n` +
               "Peserta yang sudah terkirim, dikecualikan, atau bernomor tidak valid " +
@@ -114,7 +114,7 @@ export function PilihAntre({ rows, batas }: { rows: KandidatRow[]; batas: number
             variant="outline"
             disabled={!adaPilihan}
             message={
-              `Tandai ${dipilih.size} peserta terpilih sebagai "jangan kirim"?\n\n` +
+              `Tandai pemilik ${dipilih.size} setoran terpilih sebagai "jangan kirim"?\n\n` +
               "Mereka tidak akan pernah diambil cron sampai tandanya dilepas."
             }
           >
@@ -127,7 +127,7 @@ export function PilihAntre({ rows, batas }: { rows: KandidatRow[]; batas: number
             variant="ghost"
             disabled={!adaPilihan}
             message={
-              `Lepas tanda "jangan kirim" dari ${dipilih.size} peserta terpilih?\n\n` +
+              `Lepas tanda "jangan kirim" dari pemilik ${dipilih.size} setoran terpilih?\n\n` +
               "Mereka belum otomatis diantre — pilih lagi lalu tekan \"Antrekan terpilih\" " +
               "bila memang mau dikirim."
             }
@@ -139,7 +139,7 @@ export function PilihAntre({ rows, batas }: { rows: KandidatRow[]; batas: number
 
       {lebihDariKuota && (
         <p className="rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200">
-          {jumlahAntre} peserta melebihi jatah {batas} pesan per 24 jam. Sisanya tetap menunggu di
+          {jumlahAntre} setoran melebihi jatah {batas} pesan per 24 jam. Sisanya tetap menunggu di
           antrean dan dikirim otomatis pada putaran berikutnya — tidak ada yang hilang.
         </p>
       )}
@@ -168,7 +168,7 @@ export function PilihAntre({ rows, batas }: { rows: KandidatRow[]; batas: number
             {rows.length === 0 && (
               <TableRow>
                 <TableCell colSpan={6} className="py-8 text-center text-sm text-muted-foreground">
-                  Tidak ada peserta yang cocok dengan filter.
+                  Tidak ada setoran yang cocok dengan filter.
                 </TableCell>
               </TableRow>
             )}

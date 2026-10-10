@@ -11,8 +11,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
  * saja terjadi; yang ini untuk yang baru ketahuan belakangan, mis. sisa uji coba
  * sebelum acara.
  *
- * Sengaja tidak menyentuh assigned_at/peserta_id: yang dibatalkan hanya
- * penukarannya, bukan kepemilikan kupon oleh peserta.
+ * Sengaja tidak menyentuh assigned_at/donasi_id: yang dibatalkan hanya
+ * penukarannya, bukan kepemilikan kupon oleh setoran.
  */
 export async function resetRedeemKuponAction(formData: FormData): Promise<void> {
   // Halaman /kupon memang sudah admin-only, tapi server action bisa dipanggil
@@ -25,11 +25,11 @@ export async function resetRedeemKuponAction(formData: FormData): Promise<void> 
 
   const { data: kupon } = await admin
     .from("kupon")
-    .select("id, status, peserta_id")
+    .select("id, status, donasi_id")
     .eq("id", kuponId)
     .maybeSingle();
   if (!kupon) return;
-  const k = kupon as { id: string; status: string; peserta_id: string | null };
+  const k = kupon as { id: string; status: string; donasi_id: string | null };
   if (k.status !== "redeemed") return;
 
   // `.eq("status", "redeemed")` diulang di UPDATE, bukan cuma di cek di atas:
@@ -38,9 +38,9 @@ export async function resetRedeemKuponAction(formData: FormData): Promise<void> 
   const { data: updated } = await admin
     .from("kupon")
     .update({
-      // Kupon tanpa peserta dikembalikan ke "available" supaya tidak lahir baris
+      // Kupon tanpa setoran dikembalikan ke "available" supaya tidak lahir baris
       // "assigned" yang tidak dimiliki siapa pun.
-      status: k.peserta_id ? "assigned" : "available",
+      status: k.donasi_id ? "assigned" : "available",
       redeemed_at: null,
       redeemed_by: null,
     })

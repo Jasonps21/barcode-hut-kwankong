@@ -6,6 +6,7 @@ import { ambilSemuaBaris } from "@/lib/query-semua";
 import { BUKTI_BUCKET } from "@/lib/bukti";
 import { buatXlsxBerfoto, type BarisFoto, type KolomSpec } from "@/lib/xlsx-foto";
 import { formatJamWITA, formatTanggalWITA } from "@/lib/utils";
+import { pilihKegiatan } from "@/lib/kegiatan";
 
 // Mengunduh ~100 bukti dari Storage lalu merangkainya jadi xlsx jelas lebih
 // lama dari permintaan biasa.
@@ -85,6 +86,8 @@ export async function GET(req: NextRequest) {
   const cakupan = sp.get("cakupan") === "semua" ? "semua" : "berbukti";
 
   const admin = createAdminClient();
+  const { kegiatan } = await pilihKegiatan(sp.get("kegiatan"));
+  const kegiatanId = kegiatan?.id ?? null;
 
   // "*" dipakai alih-alih daftar kolom panjang: dengan banyaknya filter
   // bersyarat di bawah, daftar eksplisit membuat inferensi tipe PostgREST
@@ -92,10 +95,11 @@ export async function GET(req: NextRequest) {
   const makeQuery = () => {
     let q = hanyaDonasiTerhitung(
       admin
-        .from("peserta")
-        .select("*, kelompok(nama)")
+        .from("donasi_lengkap")
+        .select("*, kelompok:kelompok_id(nama)")
         .order("registered_at", { ascending: true })
         .order("id", { ascending: true }),
+      kegiatanId,
     );
     if (from) q = q.gte("registered_at", `${from}T00:00:00`);
     if (to) q = q.lte("registered_at", `${to}T23:59:59.999`);

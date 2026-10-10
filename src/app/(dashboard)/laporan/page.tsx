@@ -9,12 +9,14 @@ import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatJamWITA, formatRupiah, formatTanggalWITA } from "@/lib/utils";
-import { hanyaDonasiTerhitung, sumNominalDonasi } from "@/lib/donasi-sum";
+import { hanyaDonasiTerhitung } from "@/lib/donasi-sum";
 import { ambilSemuaBaris } from "@/lib/query-semua";
+import { pilihKegiatan } from "@/lib/kegiatan";
 
 interface KelompokRow {
-  id: string; nama: string; prefix: string;
-  range_start: number; range_end: number; padding: number;
+  id: string; nama: string;
+  /** Rentang kupon buku ini di kegiatan terpilih; null bila tidak ada kupon. */
+  range: { prefix: string; range_start: number; range_end: number; padding: number } | null;
 }
 
 function fmtDateTime(iso: string | null): { tgl: string; jam: string } {
@@ -23,10 +25,13 @@ function fmtDateTime(iso: string | null): { tgl: string; jam: string } {
 }
 
 export default async function LaporanPage(props: {
-  searchParams: Promise<{ from?: string; to?: string; metode?: string }>;
+  searchParams: Promise<{ kegiatan?: string; from?: string; to?: string; metode?: string }>;
 }) {
   await requireProfile(["admin"]);
   const sp = await props.searchParams;
+  const { kegiatan, semua: semuaKegiatan } = await pilihKegiatan(sp.kegiatan);
+  const kegiatanId = kegiatan?.id ?? null;
+  const kegiatanParam = kegiatanId ? `&kegiatan=${kegiatanId}` : "";
   const from = sp.from ?? "";
   const to = sp.to ?? "";
   const metode = sp.metode === "cash" || sp.metode === "transfer" ? sp.metode : "all";
@@ -37,31 +42,58 @@ export default async function LaporanPage(props: {
   const admin = createAdminClient();
 
   // ================= Per kelompok (ringkasan kupon & donasi) =================
-  const { data: kelData } = await supabase
-    .from("kelompok")
-    .select("id, nama, prefix, range_start, range_end, padding")
-    .order("nama");
-  const kelompokRows = (kelData ?? []) as KelompokRow[];
+  const [{ data: kelData }, { data: rangeData }] = await Promise.all([
+    supabase.from("kelompok").select("id, nama").order("nama"),
+    kegiatanId
+      ? supabase
+          .from("kegiatan_kupon_range")
+          .select("kelompok_id, prefix, range_start, range_end, padding")
+          .eq("kegiatan_id", kegiatanId)
+      : Promise.resolve({ data: [] }),
+  ]);
+  const rangeMap = new Map(
+    ((rangeData ?? []) as Array<{ kelompok_id: string; prefix: string; range_start: number; range_end: number; padding: number }>)
+      .map((r) => [r.kelompok_id, r]),
+  );
+  const kelompokRows: KelompokRow[] = ((kelData ?? []) as Array<{ id: string; nama: string }>)
+    .map((k) => ({ ...k, range: rangeMap.get(k.id) ?? null }));
 
-  // Jumlah baris memakai COUNT di server (eksak, tanpa batas 1000) dan total
-  // donasi memakai sumNominalDonasi yang dipaginasi penuh — dulu keduanya
-  // dihitung dari `select()` biasa sehingga diam-diam terpotong di 1000 baris.
+  // Satu pindaian setoran kegiatan ini untuk total & donatur per buku. Donatur
+  // dihitung per anggota unik karena satu anggota boleh menyetor berkali-kali.
+  const setoranKegiatan = await ambilSemuaBaris<{ kelompok_id: string; anggota_id: string; nominal_donasi: number | string }>(
+    () =>
+      hanyaDonasiTerhitung(
+        admin.from("donasi_lengkap").select("kelompok_id, anggota_id, nominal_donasi").order("id", { ascending: true }),
+        kegiatanId,
+      ) as never,
+  );
+  const perBuku = new Map<string, { donasi: number; donatur: Set<string> }>();
+  for (const r of setoranKegiatan) {
+    const b = perBuku.get(r.kelompok_id) ?? { donasi: 0, donatur: new Set<string>() };
+    b.donasi += Number(r.nominal_donasi ?? 0);
+    b.donatur.add(r.anggota_id);
+    perBuku.set(r.kelompok_id, b);
+  }
+
+  // Jumlah kupon memakai COUNT di server (eksak, tanpa batas 1000).
+  const kuponCount = (kelompokId: string, status?: string) => {
+    let q = admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", kelompokId);
+    if (kegiatanId) q = q.eq("kegiatan_id", kegiatanId);
+    if (status) q = q.eq("status", status);
+    return q;
+  };
   const stats = await Promise.all(kelompokRows.map(async (k) => {
-    const [tot, asg, red, anggota, donatur, donasi] = await Promise.all([
-      admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
-      admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "assigned"),
-      admin.from("kupon").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id).eq("status", "redeemed"),
-      admin.from("peserta").select("id", { count: "exact", head: true }).eq("kelompok_id", k.id),
-      hanyaDonasiTerhitung(admin.from("peserta").select("id", { count: "exact", head: true })).eq("kelompok_id", k.id),
-      sumNominalDonasi(() =>
-        hanyaDonasiTerhitung(admin.from("peserta").select("nominal_donasi").order("id", { ascending: true }))
-          .eq("kelompok_id", k.id),
-      ),
+    const [tot, asg, red, anggota] = await Promise.all([
+      kuponCount(k.id),
+      kuponCount(k.id, "assigned"),
+      kuponCount(k.id, "redeemed"),
+      admin.from("anggota").select("id", { count: "exact", head: true }).eq("buku_id", k.id).eq("aktif", true),
     ]);
+    const b = perBuku.get(k.id);
     return {
       ...k,
       total: tot.count ?? 0, assigned: asg.count ?? 0, redeemed: red.count ?? 0,
-      donasi, peserta: anggota.count ?? 0, donatur: donatur.count ?? 0,
+      donasi: b?.donasi ?? 0, peserta: anggota.count ?? 0, donatur: b?.donatur.size ?? 0,
     };
   }));
   const grand = stats.reduce(
@@ -76,10 +108,11 @@ export default async function LaporanPage(props: {
   const makeRegQuery = () => {
     let mq = hanyaDonasiTerhitung(
       admin
-        .from("peserta")
-        .select("id, nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok(nama)")
+        .from("donasi_lengkap")
+        .select("id, nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok:kelompok_id(nama)")
         .order("registered_at", { ascending: false })
         .order("id", { ascending: true }),
+      kegiatanId,
     );
     if (fromISO) mq = mq.gte("registered_at", fromISO);
     if (toISO) mq = mq.lte("registered_at", toISO);
@@ -101,17 +134,19 @@ export default async function LaporanPage(props: {
   const makeKuponQuery = () => {
     let kq = admin
       .from("kupon")
-      .select("nomor_kupon, assigned_at, assigned_by, status, peserta(nama, kelompok(nama))")
+      .select("nomor_kupon, assigned_at, assigned_by, status, kelompok:kelompok_id(nama), donasi(anggota(nama))")
       .not("assigned_at", "is", null)
       .order("assigned_at", { ascending: false })
       .order("nomor_kupon", { ascending: true });
+    if (kegiatanId) kq = kq.eq("kegiatan_id", kegiatanId);
     if (fromISO) kq = kq.gte("assigned_at", fromISO);
     if (toISO) kq = kq.lte("assigned_at", toISO);
     return kq;
   };
   const kupons = await ambilSemuaBaris<{
     nomor_kupon: string; assigned_at: string | null; assigned_by: string | null; status: string;
-    peserta: { nama: string; kelompok: { nama: string } | null } | null;
+    kelompok: { nama: string } | null;
+    donasi: { anggota: { nama: string } | null } | null;
   }>(makeKuponQuery as never);
 
   // nama petugas untuk created_by + assigned_by
@@ -140,11 +175,13 @@ export default async function LaporanPage(props: {
       <div className="flex flex-wrap items-center justify-between gap-3">
         <div>
           <h1 className="text-3xl font-bold tracking-tight">Laporan</h1>
-          <p className="text-sm text-muted-foreground">Rekap uang masuk, kupon keluar, dan statistik per kelompok.</p>
+          <p className="text-sm text-muted-foreground">
+            {kegiatan ? `${kegiatan.nama} — ` : ""}rekap uang masuk, kupon keluar, dan statistik per kelompok.
+          </p>
         </div>
         <div className="flex flex-wrap gap-2">
           <a
-            href="/api/laporan/kupon?status=assigned&format=xlsx"
+            href={`/api/laporan/kupon?status=assigned&format=xlsx${kegiatanParam}`}
             title="Excel semua kupon yang sudah dipegang peserta tapi belum ditukar — semua buku, diurutkan berdasarkan nama."
             className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border border-amber-600/40 bg-amber-50 px-4 py-2 text-sm font-medium text-amber-900 shadow-sm transition-colors hover:bg-amber-100 dark:border-amber-400/30 dark:bg-amber-950 dark:text-amber-100 dark:hover:bg-amber-900 [&_svg]:size-4"
           >
@@ -152,9 +189,10 @@ export default async function LaporanPage(props: {
           </a>
           <a
             href="/api/laporan/peserta"
+            title="CSV seluruh anggota beserta total setoran per kegiatan."
             className="inline-flex h-9 items-center justify-center gap-2 whitespace-nowrap rounded-md border bg-background px-4 py-2 text-sm font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground [&_svg]:size-4"
           >
-            <Download /> Export Semua Peserta
+            <Download /> Export Semua Anggota
           </a>
         </div>
       </div>
@@ -163,10 +201,18 @@ export default async function LaporanPage(props: {
       <Card>
         <CardHeader>
           <CardTitle>Filter Periode</CardTitle>
-          <CardDescription>Pilih rentang tanggal & metode bayar. Kosongkan tanggal untuk semua waktu.</CardDescription>
+          <CardDescription>Pilih kegiatan, rentang tanggal & metode bayar. Kosongkan tanggal untuk semua waktu.</CardDescription>
         </CardHeader>
         <CardContent>
           <form className="flex flex-wrap items-end gap-3">
+            <div className="space-y-1">
+              <label htmlFor="kegiatan" className="text-xs font-medium text-muted-foreground">Kegiatan</label>
+              <Select id="kegiatan" name="kegiatan" defaultValue={kegiatanId ?? ""} className="w-56">
+                {semuaKegiatan.map((k) => (
+                  <option key={k.id} value={k.id}>{k.nama}{k.aktif ? " (berjalan)" : ""}</option>
+                ))}
+              </Select>
+            </div>
             <div className="space-y-1">
               <label htmlFor="from" className="text-xs font-medium text-muted-foreground">Dari tanggal</label>
               <Input id="from" name="from" type="date" defaultValue={from} className="w-44" />
@@ -215,14 +261,14 @@ export default async function LaporanPage(props: {
             ).map((f) => (
               <a
                 key={f.format}
-                href={`/api/laporan/uang-masuk?format=${f.format}&from=${from}&to=${to}&metode=${metode}`}
+                href={`/api/laporan/uang-masuk?format=${f.format}&from=${from}&to=${to}&metode=${metode}${kegiatanParam}`}
                 className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent hover:text-accent-foreground"
               >
                 {f.icon} {f.label}
               </a>
             ))}
             <a
-              href={`/api/laporan/donasi-bukti?from=${from}&to=${to}&metode=${metode}`}
+              href={`/api/laporan/donasi-bukti?from=${from}&to=${to}&metode=${metode}${kegiatanParam}`}
               className="inline-flex h-8 items-center gap-1.5 rounded-md border border-emerald-600/40 bg-emerald-50 px-3 text-xs font-medium text-emerald-800 shadow-sm transition-colors hover:bg-emerald-100 dark:border-emerald-400/30 dark:bg-emerald-950 dark:text-emerald-200 dark:hover:bg-emerald-900"
               title="Excel dengan foto bukti transfer tertanam di setiap baris. Hanya baris yang punya bukti."
             >
@@ -301,14 +347,14 @@ export default async function LaporanPage(props: {
         <Card>
           <CardHeader>
             <CardTitle>Detail Pengambilan Kupon</CardTitle>
-            <CardDescription>Siapa yang mendapat kupon & petugas yang meng-assign.</CardDescription>
+            <CardDescription>Siapa yang mendapat kupon & petugas yang memberikan.</CardDescription>
           </CardHeader>
           <CardContent className="p-0">
             <Table>
               <TableHeader>
                 <TableRow>
                   <TableHead>Kupon</TableHead>
-                  <TableHead>Peserta</TableHead>
+                  <TableHead>Anggota</TableHead>
                   <TableHead>Petugas</TableHead>
                   <TableHead>Tanggal</TableHead>
                 </TableRow>
@@ -323,8 +369,8 @@ export default async function LaporanPage(props: {
                     <TableRow key={k.nomor_kupon}>
                       <TableCell className="font-mono text-xs">{k.nomor_kupon}</TableCell>
                       <TableCell>
-                        <div className="text-sm font-medium">{k.peserta?.nama ?? "-"}</div>
-                        <div className="text-xs text-muted-foreground">{k.peserta?.kelompok?.nama ?? ""}</div>
+                        <div className="text-sm font-medium">{k.donasi?.anggota?.nama ?? "-"}</div>
+                        <div className="text-xs text-muted-foreground">{k.kelompok?.nama ?? ""}</div>
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">{k.assigned_by ? petugasMap.get(k.assigned_by) ?? "-" : "-"}</TableCell>
                       <TableCell className="whitespace-nowrap text-xs">{tgl} {jam}</TableCell>
@@ -344,7 +390,10 @@ export default async function LaporanPage(props: {
       <Card>
         <CardHeader>
           <CardTitle>Per Kelompok</CardTitle>
-          <CardDescription>Distribusi kupon, peserta, dan donasi (akumulasi, tanpa filter tanggal).</CardDescription>
+          <CardDescription>
+            Distribusi kupon, anggota, dan donasi di kegiatan ini (akumulasi, tanpa filter tanggal).
+            Anggota = anggota aktif di buku itu; donatur = anggota yang sudah menyetor.
+          </CardDescription>
         </CardHeader>
         <CardContent className="p-0">
           <Table>
@@ -355,19 +404,26 @@ export default async function LaporanPage(props: {
                 <TableHead className="text-right">Total</TableHead>
                 <TableHead className="text-right">Diasosiasikan</TableHead>
                 <TableHead className="text-right">Ditukar</TableHead>
-                <TableHead className="text-right">Peserta</TableHead>
+                <TableHead className="text-right">Anggota</TableHead>
                 <TableHead className="text-right">Donatur</TableHead>
                 <TableHead className="text-right">Total Donasi</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {stats.map((s) => {
-                const start = String(s.range_start).padStart(s.padding, "0");
-                const end = String(s.range_end).padStart(s.padding, "0");
+                const r = s.range;
                 return (
                   <TableRow key={s.id}>
                     <TableCell className="font-medium">{s.nama}</TableCell>
-                    <TableCell><Badge variant="outline" className="font-mono">{s.prefix}{start}–{s.prefix}{end}</Badge></TableCell>
+                    <TableCell>
+                      {r ? (
+                        <Badge variant="outline" className="font-mono">
+                          {r.prefix}{String(r.range_start).padStart(r.padding, "0")}–{r.prefix}{String(r.range_end).padStart(r.padding, "0")}
+                        </Badge>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">-</span>
+                      )}
+                    </TableCell>
                     <TableCell className="text-right">{s.total}</TableCell>
                     <TableCell className="text-right">{s.assigned}</TableCell>
                     <TableCell className="text-right">{s.redeemed}</TableCell>

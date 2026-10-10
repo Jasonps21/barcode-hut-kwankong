@@ -3,8 +3,11 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { formatRupiah, dateKeyWITA } from "@/lib/utils";
-import { hanyaDonasiTerhitung, sumNominalDonasi } from "@/lib/donasi-sum";
+import { hanyaDonasiTerhitung } from "@/lib/donasi-sum";
 import { ambilSemuaBaris } from "@/lib/query-semua";
+import { pilihKegiatan } from "@/lib/kegiatan";
+import { Select } from "@/components/ui/select";
+import { Button } from "@/components/ui/button";
 
 interface Stats {
   /** Kupon yang sudah ada pemiliknya = belum_ditukar + sudah_ditukar. Ini yang
@@ -23,47 +26,49 @@ interface Stats {
   wa_sent: number;
 }
 
-async function loadStats(kelompokId: string | null): Promise<Stats> {
+async function loadStats(kelompokId: string | null, kegiatanId: string | null): Promise<Stats> {
   const supabase = await createClient();
 
   // Hitung via COUNT di server (head: true) — tidak menarik seluruh baris.
   const kuponCount = (status?: string) => {
     let q = supabase.from("kupon").select("id", { count: "exact", head: true });
+    if (kegiatanId) q = q.eq("kegiatan_id", kegiatanId);
     if (kelompokId) q = q.eq("kelompok_id", kelompokId);
     if (status) q = q.eq("status", status);
     return q;
   };
-  const pesertaCount = (waStatus?: string) => {
-    let q = supabase.from("peserta").select("id", { count: "exact", head: true });
-    if (kelompokId) q = q.eq("kelompok_id", kelompokId);
-    if (waStatus) q = q.eq("wa_status", waStatus);
-    return q;
-  };
-  // Peserta "sudah ikut donasi" — memakai definisi tunggal `hanyaDonasiTerhitung`
-  // supaya angkanya sama dengan jumlah peserta per kelompok & rekap di Laporan.
-  const pesertaDonasiCount = (() => {
-    let q = hanyaDonasiTerhitung(supabase.from("peserta").select("id", { count: "exact", head: true }));
-    if (kelompokId) q = q.eq("kelompok_id", kelompokId);
+  // Anggota = master lintas kegiatan, jadi penyebutnya adalah anggota aktif di
+  // buku ini, bukan "yang terdaftar di kegiatan".
+  const anggotaCount = (() => {
+    let q = supabase.from("anggota").select("id", { count: "exact", head: true }).eq("aktif", true);
+    if (kelompokId) q = q.eq("buku_id", kelompokId);
     return q;
   })();
-  // total_donasi butuh SUM semua baris (bukan hanya 1000 pertama): pakai
-  // helper yang menjumlahkan seluruh baris secara paginasi.
-  const makeDonasiQuery = () => {
-    let q = hanyaDonasiTerhitung(
-      supabase.from("peserta").select("nominal_donasi").order("id", { ascending: true }),
-    );
-    if (kelompokId) q = q.eq("kelompok_id", kelompokId);
-    return q;
-  };
 
-  const [
-    assigned, redeemed, available,
-    totalPeserta, pesertaDonasi, waSent,
-    total_donasi,
-  ] = await Promise.all([
-    kuponCount("assigned"), kuponCount("redeemed"), kuponCount("available"),
-    pesertaCount(), pesertaDonasiCount, pesertaCount("sent"),
-    sumNominalDonasi(makeDonasiQuery),
+  // Satu pindaian seluruh setoran kegiatan ini sudah cukup untuk total uang,
+  // jumlah anggota unik yang menyetor, dan jumlah WA terkirim — satu anggota
+  // bisa menyetor beberapa kali, jadi "sudah ikut" dihitung dari anggota unik.
+  const donasiRows = await ambilSemuaBaris<{ anggota_id: string; nominal_donasi: number | string; wa_status: string }>(
+    () => {
+      let q = hanyaDonasiTerhitung(
+        supabase.from("donasi_lengkap").select("anggota_id, nominal_donasi, wa_status").order("id", { ascending: true }),
+        kegiatanId,
+      );
+      if (kelompokId) q = q.eq("kelompok_id", kelompokId);
+      return q as never;
+    },
+  );
+  let total_donasi = 0;
+  let wa_sent = 0;
+  const penyetor = new Set<string>();
+  for (const r of donasiRows) {
+    total_donasi += Number(r.nominal_donasi ?? 0);
+    if (r.wa_status === "sent") wa_sent += 1;
+    penyetor.add(r.anggota_id);
+  }
+
+  const [assigned, redeemed, available, totalAnggota] = await Promise.all([
+    kuponCount("assigned"), kuponCount("redeemed"), kuponCount("available"), anggotaCount,
   ]);
 
   const belum_ditukar = assigned.count ?? 0;
@@ -75,9 +80,9 @@ async function loadStats(kelompokId: string | null): Promise<Stats> {
     sudah_ditukar,
     belum_dibagikan: available.count ?? 0,
     total_donasi,
-    total_peserta: totalPeserta.count ?? 0,
-    peserta_donasi: pesertaDonasi.count ?? 0,
-    wa_sent: waSent.count ?? 0,
+    total_peserta: totalAnggota.count ?? 0,
+    peserta_donasi: penyetor.size,
+    wa_sent,
   };
 }
 
@@ -92,10 +97,10 @@ interface Analytics {
 }
 
 // Analitik lintas kelompok — hanya untuk admin. Satu kali pindai seluruh
-// donasi terhitung (dipaginasi penuh oleh `ambilSemuaBaris`) lalu
-// diagregasi di server: total donasi & jumlah peserta per kelompok, breakdown
-// metode bayar, dan tren pendaftaran 14 hari terakhir (WITA).
-async function loadAnalytics(): Promise<Analytics> {
+// setoran kegiatan terpilih (dipaginasi penuh oleh `ambilSemuaBaris`) lalu
+// diagregasi di server: total donasi & jumlah anggota per kelompok, breakdown
+// metode bayar, penyumbang tertinggi, dan tren 14 hari terakhir (WITA).
+async function loadAnalytics(kegiatanId: string | null): Promise<Analytics> {
   const supabase = await createClient();
 
   const { data: kelompokData } = await supabase
@@ -105,27 +110,33 @@ async function loadAnalytics(): Promise<Analytics> {
   const kelompokList = (kelompokData ?? []) as Array<{ id: string; nama: string }>;
   const kelompokNama = new Map(kelompokList.map((k) => [k.id, k.nama]));
 
-  const perKelompokMap = new Map<string, { total: number; peserta: number }>();
+  const perKelompokMap = new Map<string, { total: number; anggota: Set<string> }>();
+  const perAnggota = new Map<string, { nama: string; kelompok_id: string; total: number }>();
   const metode = { cash: { total: 0, count: 0 }, transfer: { total: 0, count: 0 } };
   const dailyCount = new Map<string, number>();
   const dailyTotal = new Map<string, number>();
 
   const donasiRows = await ambilSemuaBaris<{
+    anggota_id: string; nama: string | null;
     kelompok_id: string; nominal_donasi: number | string; metode_bayar: string | null; registered_at: string | null;
   }>(() =>
     hanyaDonasiTerhitung(
       supabase
-        .from("peserta")
-        .select("kelompok_id, nominal_donasi, metode_bayar, registered_at")
+        .from("donasi_lengkap")
+        .select("anggota_id, nama, kelompok_id, nominal_donasi, metode_bayar, registered_at")
         .order("id", { ascending: true }),
-    ),
+      kegiatanId,
+    ) as never,
   );
   for (const r of donasiRows) {
     const nominal = Number(r.nominal_donasi ?? 0);
-    const pk = perKelompokMap.get(r.kelompok_id) ?? { total: 0, peserta: 0 };
+    const pk = perKelompokMap.get(r.kelompok_id) ?? { total: 0, anggota: new Set<string>() };
     pk.total += nominal;
-    pk.peserta += 1;
+    pk.anggota.add(r.anggota_id);
     perKelompokMap.set(r.kelompok_id, pk);
+    const pa = perAnggota.get(r.anggota_id) ?? { nama: r.nama ?? "-", kelompok_id: r.kelompok_id, total: 0 };
+    pa.total += nominal;
+    perAnggota.set(r.anggota_id, pa);
     if (r.metode_bayar === "cash") { metode.cash.total += nominal; metode.cash.count += 1; }
     else if (r.metode_bayar === "transfer") { metode.transfer.total += nominal; metode.transfer.count += 1; }
     const dk = dateKeyWITA(r.registered_at);
@@ -134,20 +145,15 @@ async function loadAnalytics(): Promise<Analytics> {
   }
 
   const perKelompok: KelompokDonasi[] = kelompokList
-    .map((k) => ({ id: k.id, nama: k.nama, total: perKelompokMap.get(k.id)?.total ?? 0, peserta: perKelompokMap.get(k.id)?.peserta ?? 0 }))
+    .map((k) => ({ id: k.id, nama: k.nama, total: perKelompokMap.get(k.id)?.total ?? 0, peserta: perKelompokMap.get(k.id)?.anggota.size ?? 0 }))
     .sort((a, b) => b.total - a.total);
 
-  // Penyumbang tertinggi — query terpisah (order + limit) supaya presisi & murah.
-  const { data: topData } = await hanyaDonasiTerhitung(
-    supabase.from("peserta").select("nama, kelompok_id, nominal_donasi"),
-  )
-    .order("nominal_donasi", { ascending: false })
-    .limit(10);
-  const topDonatur: TopDonatur[] = ((topData ?? []) as Array<{ nama: string; kelompok_id: string; nominal_donasi: number | string }>).map((r) => ({
-    nama: r.nama,
-    kelompok: kelompokNama.get(r.kelompok_id) ?? "-",
-    nominal: Number(r.nominal_donasi ?? 0),
-  }));
+  // Penyumbang tertinggi dijumlahkan per ANGGOTA: orang yang menyetor dua kali
+  // di kegiatan yang sama tetap satu baris.
+  const topDonatur: TopDonatur[] = [...perAnggota.values()]
+    .sort((a, b) => b.total - a.total)
+    .slice(0, 10)
+    .map((r) => ({ nama: r.nama, kelompok: kelompokNama.get(r.kelompok_id) ?? "-", nominal: r.total }));
 
   // Tren 14 hari terakhir (termasuk hari kosong) berdasarkan tanggal WITA.
   const tren: TrenHari[] = [];
@@ -192,7 +198,7 @@ function DonasiKelompokChart({ rows }: { rows: KelompokDonasi[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Wallet className="h-5 w-5 text-blue-500" /> Total Dana per Kelompok</CardTitle>
-        <CardDescription>Jumlah donasi & peserta yang sudah ikut, per kelompok.</CardDescription>
+        <CardDescription>Jumlah donasi & anggota yang sudah menyetor, per kelompok.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-3">
         {rows.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Belum ada data donasi.</p>}
@@ -201,7 +207,7 @@ function DonasiKelompokChart({ rows }: { rows: KelompokDonasi[] }) {
             <div className="flex items-baseline justify-between gap-2 text-sm">
               <span className="truncate font-medium">{r.nama}</span>
               <span className="shrink-0 tabular-nums text-muted-foreground">
-                {formatRupiah(r.total)} <span className="text-xs">· {r.peserta} peserta</span>
+                {formatRupiah(r.total)} <span className="text-xs">· {r.peserta} anggota</span>
               </span>
             </div>
             <div className="h-2.5 w-full overflow-hidden rounded-full bg-muted">
@@ -220,7 +226,7 @@ function TopDonaturCard({ rows }: { rows: TopDonatur[] }) {
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2"><Trophy className="h-5 w-5 text-amber-500" /> Penyumbang Tertinggi</CardTitle>
-        <CardDescription>10 donasi terbesar dari peserta terdaftar.</CardDescription>
+        <CardDescription>10 anggota dengan total setoran terbesar di kegiatan ini.</CardDescription>
       </CardHeader>
       <CardContent className="space-y-1">
         {rows.length === 0 && <p className="py-6 text-center text-sm text-muted-foreground">Belum ada data donasi.</p>}
@@ -278,13 +284,13 @@ function TrenPendaftaranCard({ rows }: { rows: TrenHari[] }) {
   return (
     <Card>
       <CardHeader>
-        <CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5 text-violet-500" /> Tren Pendaftaran (14 Hari Terakhir)</CardTitle>
-        <CardDescription>{totalPeserta} pendaftaran dalam 14 hari terakhir.</CardDescription>
+        <CardTitle className="flex items-center gap-2"><TrendingUp className="h-5 w-5 text-violet-500" /> Tren Setoran (14 Hari Terakhir)</CardTitle>
+        <CardDescription>{totalPeserta} setoran dalam 14 hari terakhir.</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="flex h-44 items-end gap-1.5 sm:gap-2">
           {rows.map((r) => (
-            <div key={r.key} className="flex flex-1 flex-col items-center gap-1" title={`${r.label}: ${r.count} pendaftaran · ${formatRupiah(r.total)}`}>
+            <div key={r.key} className="flex flex-1 flex-col items-center gap-1" title={`${r.label}: ${r.count} setoran · ${formatRupiah(r.total)}`}>
               <span className="text-[10px] font-medium tabular-nums text-muted-foreground">{r.count || ""}</span>
               <div className="flex w-full flex-1 items-end">
                 <div
@@ -301,12 +307,15 @@ function TrenPendaftaranCard({ rows }: { rows: TrenHari[] }) {
   );
 }
 
-export default async function DashboardPage() {
+export default async function DashboardPage(props: { searchParams: Promise<{ kegiatan?: string }> }) {
   const profile = await requireProfile();
   const isAdmin = profile.role === "admin";
+  const sp = await props.searchParams;
+  const { kegiatan, semua: semuaKegiatan } = await pilihKegiatan(sp.kegiatan);
+  const kegiatanId = kegiatan?.id ?? null;
   const [stats, analytics] = await Promise.all([
-    loadStats(isAdmin ? null : profile.kelompok_id),
-    isAdmin ? loadAnalytics() : Promise.resolve(null),
+    loadStats(isAdmin ? null : profile.kelompok_id, kegiatanId),
+    isAdmin ? loadAnalytics(kegiatanId) : Promise.resolve(null),
   ]);
 
   const pct = (n: number) => stats.kupon_beredar ? ` (${Math.round((n / stats.kupon_beredar) * 100)}%)` : "";
@@ -314,11 +323,24 @@ export default async function DashboardPage() {
 
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
-        <p className="text-sm text-muted-foreground">
-          {profile.role === "admin" ? "Statistik seluruh kelompok." : "Statistik kelompok Anda."}
-        </p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Dashboard</h1>
+          <p className="text-sm text-muted-foreground">
+            {kegiatan ? `${kegiatan.nama} · ` : ""}
+            {profile.role === "admin" ? "Statistik seluruh kelompok." : "Statistik kelompok Anda."}
+          </p>
+        </div>
+        {semuaKegiatan.length > 1 && (
+          <form className="flex items-end gap-2">
+            <Select name="kegiatan" defaultValue={kegiatanId ?? ""} className="w-56" aria-label="Kegiatan">
+              {semuaKegiatan.map((k) => (
+                <option key={k.id} value={k.id}>{k.nama}{k.aktif ? " (berjalan)" : ""}</option>
+              ))}
+            </Select>
+            <Button type="submit" variant="outline" size="sm">Tampilkan</Button>
+          </form>
+        )}
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -330,14 +352,14 @@ export default async function DashboardPage() {
         />
         <StatCard label="Sudah Ditukar" value={String(stats.sudah_ditukar)} hint={`dari ${stats.kupon_beredar}${pct(stats.sudah_ditukar)}`} icon={PackageCheck} accent="text-emerald-500" />
         <StatCard label="Belum Ditukar" value={String(stats.belum_ditukar)} hint={`dari ${stats.kupon_beredar}${pct(stats.belum_ditukar)}`} icon={Hourglass} accent="text-amber-500" />
-        <StatCard label="Total Peserta" value={String(stats.total_peserta)} icon={Users} accent="text-violet-500" />
+        <StatCard label="Total Anggota" value={String(stats.total_peserta)} icon={Users} accent="text-violet-500" />
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
         <StatCard
           label="Sudah Ikut Donasi"
           value={`${stats.peserta_donasi} (${pesertaDonasiPct}%)`}
-          hint={`dari ${stats.total_peserta} total peserta di aplikasi`}
+          hint={`dari ${stats.total_peserta} anggota aktif`}
           icon={HandCoins}
           accent="text-amber-600"
         />

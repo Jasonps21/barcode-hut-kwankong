@@ -1,88 +1,55 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState, useTransition } from "react";
-import {
-  Camera, CameraOff, CheckCircle2, Loader2, Lock, Pencil, Plus, Save, Search, User, X,
-} from "lucide-react";
+import { useEffect, useRef, useState, useTransition } from "react";
+import Link from "next/link";
+import { History, Loader2, Search, User, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { RupiahInput } from "@/components/ui/rupiah-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
-import { QrScanner } from "@/components/scanner/qr-scanner";
-import {
-  registerExistingPesertaAction,
-  searchPesertaAction,
-  type PesertaHit,
-  type RegisterState,
-} from "./actions";
+import { formatRupiah, formatTanggalWITA } from "@/lib/utils";
+import { TambahDonasiForm, type PilihanKegiatan } from "../anggota/[id]/tambah-donasi-form";
+import { searchAnggotaAction, type AnggotaHit } from "./actions";
 
-export function ScanPendaftaranClient() {
+/**
+ * Layar petugas saat menagih: cari anggota, lihat setoran terakhirnya, lalu
+ * catat setoran baru di tempat yang sama. Tidak ada lagi kunci "sudah donasi":
+ * anggota boleh menyetor berkali-kali, dan setoran sebelumnya ditampilkan
+ * supaya petugas tahu ini setoran tambahan.
+ */
+export function ScanPendaftaranClient({
+  kegiatan,
+  kegiatanAwalId,
+}: {
+  kegiatan: PilihanKegiatan[];
+  kegiatanAwalId: string;
+}) {
   const [query, setQuery] = useState("");
-  const [results, setResults] = useState<PesertaHit[]>([]);
+  const [hasil, setResults] = useState<AnggotaHit[]>([]);
   const [searching, startSearch] = useTransition();
-  const [selected, setSelected] = useState<PesertaHit | null>(null);
-
-  const [kupons, setKupons] = useState<string[]>([]);
-  const [scanOn, setScanOn] = useState(false);
-  const [manual, setManual] = useState("");
-  const [metode, setMetode] = useState("");
-  const [tanpaKupon, setTanpaKupon] = useState(false);
-  const [editHp, setEditHp] = useState(false);
-
-  const [state, action, pending] = useActionState<RegisterState, FormData>(
-    registerExistingPesertaAction,
-    undefined,
-  );
+  const [selected, setSelected] = useState<AnggotaHit | null>(null);
   const debounce = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Hasil lama disembunyikan saat kata kunci terlalu pendek, alih-alih
+  // dikosongkan lewat setState di dalam effect.
+  const results = query.trim().length >= 2 ? hasil : [];
 
   // Debounced search
   useEffect(() => {
     if (debounce.current) clearTimeout(debounce.current);
-    if (query.trim().length < 2) { setResults([]); return; }
+    if (query.trim().length < 2) return;
     debounce.current = setTimeout(() => {
-      startSearch(async () => setResults(await searchPesertaAction(query)));
+      startSearch(async () => setResults(await searchAnggotaAction(query, kegiatanAwalId || null)));
     }, 300);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [query]);
+  }, [query, kegiatanAwalId]);
 
-  // Setelah sukses simpan, reset semuanya
-  useEffect(() => {
-    if (state?.success) {
-      setSelected(null);
-      setKupons([]);
-      setScanOn(false);
-      setQuery("");
-      setResults([]);
-      setMetode("");
-      setTanpaKupon(false);
-      setEditHp(false);
-    }
-  }, [state?.success]);
-
-  function addKupon(raw: string) {
-    const v = raw.trim().toUpperCase();
-    if (!v) return;
-    setKupons((prev) => (prev.includes(v) ? prev : [...prev, v]));
-  }
-  function removeKupon(v: string) {
-    setKupons((prev) => prev.filter((k) => k !== v));
-  }
-  function toggleTanpaKupon(checked: boolean) {
-    setTanpaKupon(checked);
-    if (checked) {
-      setKupons([]);
-      setScanOn(false);
-      setManual("");
-    }
-  }
-
-  // ---- Tahap 1: cari & pilih peserta ----
+  // ---- Tahap 1: cari & pilih anggota ----
   if (!selected) {
     return (
       <div className="space-y-4">
         <div className="space-y-2">
-          <Label htmlFor="cari">Cari peserta (nama / toko / alamat / no HP / nama hanzi)</Label>
+          <Label htmlFor="cari">Cari anggota (nama / toko / alamat / no HP / nama hanzi)</Label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input
@@ -96,12 +63,6 @@ export function ScanPendaftaranClient() {
           </div>
         </div>
 
-        {state?.success && (
-          <div className="flex items-center gap-2 rounded-md bg-emerald-500/10 px-3 py-2 text-sm font-medium text-emerald-700 dark:text-emerald-400">
-            <CheckCircle2 className="h-4 w-4" /> {state.success}
-          </div>
-        )}
-
         {searching && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
             <Loader2 className="h-4 w-4 animate-spin" /> Mencari...
@@ -109,200 +70,90 @@ export function ScanPendaftaranClient() {
         )}
 
         {!searching && query.trim().length >= 2 && results.length === 0 && (
-          <p className="text-sm text-muted-foreground">Tidak ada peserta cocok dengan &quot;{query}&quot;.</p>
+          <p className="text-sm text-muted-foreground">
+            Tidak ada anggota cocok dengan &quot;{query}&quot;.{" "}
+            <Link href="/anggota/tambah" className="underline">Daftarkan anggota baru</Link>
+          </p>
         )}
 
-        <div className="divide-y rounded-lg border">
-          {results.map((p) => {
-            const terkunci = Number(p.nominal_donasi) > 0;
-            return (
+        {results.length > 0 && (
+          <div className="divide-y rounded-lg border">
+            {results.map((p) => (
               <button
                 key={p.id}
                 type="button"
-                disabled={terkunci}
-                onClick={() => { setSelected(p); setKupons([]); setTanpaKupon(false); setEditHp(false); }}
-                className="flex w-full items-start gap-3 p-3 text-left transition-colors enabled:hover:bg-accent disabled:cursor-not-allowed disabled:opacity-60"
+                onClick={() => setSelected(p)}
+                className="flex w-full items-start gap-3 p-3 text-left transition-colors hover:bg-accent"
               >
-                {terkunci
-                  ? <Lock className="mt-0.5 h-4 w-4 shrink-0 text-amber-600 dark:text-amber-500" />
-                  : <User className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />}
+                <User className="mt-0.5 h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-2">
                     <span className="font-medium">{p.nama}</span>
                     {p.nama_hanzi && <span lang="zh" className="text-sm text-muted-foreground">{p.nama_hanzi}</span>}
-                    <Badge variant="outline" className="text-[10px]">{p.kelompok_nama ?? "-"}</Badge>
-                    {p.kupon_count > 0 && (
-                      <Badge variant="success" className="text-[10px]">sudah {p.kupon_count} kupon</Badge>
-                    )}
-                    {terkunci && (
-                      <Badge variant="warning" className="text-[10px]">sudah donasi — terkunci</Badge>
+                    <Badge variant="outline" className="text-[10px]">{p.buku_nama ?? "-"}</Badge>
+                    {p.setoranKegiatanIni > 0 && (
+                      <Badge variant="success" className="text-[10px]">sudah {p.setoranKegiatanIni}x setor di kegiatan ini</Badge>
                     )}
                   </div>
                   <div className="truncate text-xs text-muted-foreground">
-                    {p.alamat}{p.no_whatsapp ? ` · ${p.no_whatsapp}` : ""}
+                    {p.alamat ?? "-"}{p.no_whatsapp ? ` · ${p.no_whatsapp}` : ""}
                   </div>
-                  {terkunci && (
-                    <div className="mt-0.5 text-xs text-amber-700 dark:text-amber-500">
-                      Sudah menginput donasi. Perubahan hanya bisa lewat admin (menu Transaksi).
-                    </div>
-                  )}
+                  <div className="mt-0.5 text-xs">
+                    {p.terakhir ? (
+                      <span className="text-muted-foreground">
+                        Terakhir: <span className="font-medium text-foreground">{formatRupiah(p.terakhir.nominal)}</span>
+                        {" "}· {p.terakhir.kegiatan} · {formatTanggalWITA(p.terakhir.tanggal, { day: "numeric", month: "short", year: "numeric" })}
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground">Belum pernah menyetor</span>
+                    )}
+                  </div>
                 </div>
               </button>
-            );
-          })}
-        </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
 
-  // ---- Tahap 2: isi nominal + metode bayar + scan kupon ----
+  // ---- Tahap 2: catat setoran ----
   return (
-    <form action={action} className="space-y-6">
-      <input type="hidden" name="peserta_id" value={selected.id} />
-
+    <div className="space-y-6">
       <div className="flex items-start justify-between gap-3 rounded-lg border bg-muted/30 p-4">
-        <div className="min-w-0">
+        <div className="min-w-0 space-y-1">
           <div className="flex flex-wrap items-center gap-2">
             <span className="font-semibold">{selected.nama}</span>
             {selected.nama_hanzi && <span lang="zh" className="text-muted-foreground">{selected.nama_hanzi}</span>}
             {selected.pinyin && <span className="text-xs italic text-muted-foreground">{selected.pinyin}</span>}
           </div>
-          <p className="text-sm text-muted-foreground">{selected.alamat}</p>
-          <p className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-            <span>{selected.no_whatsapp || "(tanpa no HP)"} · Kelompok {selected.kelompok_nama ?? "-"}</span>
-            {!editHp && (
-              <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setEditHp(true)}>
-                <Pencil className="h-3 w-3" /> Ubah No HP
-              </Button>
-            )}
+          <p className="text-sm text-muted-foreground">{selected.alamat ?? "-"}</p>
+          <p className="text-sm text-muted-foreground">
+            {selected.no_whatsapp || "(tanpa no HP)"} · {selected.buku_nama ?? "tanpa buku"}
           </p>
+          {selected.terakhir && (
+            <p className="flex items-center gap-1.5 text-sm">
+              <History className="h-3.5 w-3.5 text-muted-foreground" />
+              Setoran terakhir <b className="tabular-nums">{formatRupiah(selected.terakhir.nominal)}</b>
+              <span className="text-muted-foreground">
+                ({selected.terakhir.kegiatan}, {formatTanggalWITA(selected.terakhir.tanggal, { day: "numeric", month: "long", year: "numeric" })})
+              </span>
+            </p>
+          )}
+          <Link href={`/anggota/${selected.id}`} className="text-xs underline">Lihat seluruh riwayat</Link>
         </div>
-        <Button type="button" variant="ghost" size="sm" onClick={() => { setSelected(null); setKupons([]); setTanpaKupon(false); setEditHp(false); }}>
+        <Button type="button" variant="ghost" size="sm" onClick={() => setSelected(null)}>
           <X /> Ganti
         </Button>
       </div>
 
-      {!editHp && <input type="hidden" name="no_whatsapp" value={selected.no_whatsapp ?? ""} />}
-
-      <div className="grid gap-4 md:grid-cols-2">
-        {editHp && (
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="no_whatsapp">No WhatsApp baru</Label>
-            <div className="flex gap-2">
-              <Input
-                key={selected.id}
-                id="no_whatsapp"
-                name="no_whatsapp"
-                inputMode="tel"
-                placeholder="08xxxxxxxxxx"
-                defaultValue={selected.no_whatsapp ?? ""}
-                required
-                autoFocus
-              />
-              <Button type="button" variant="outline" onClick={() => setEditHp(false)}>Batal</Button>
-            </div>
-            <p className="text-xs text-muted-foreground">Nomor ini dipakai untuk kirim tanda terima saat Simpan.</p>
-          </div>
-        )}
-        <div className="space-y-2">
-          <Label htmlFor="nominal_donasi">Nominal Donasi</Label>
-          <RupiahInput id="nominal_donasi" name="nominal_donasi" placeholder="0" required />
-        </div>
-        <div className="space-y-2">
-          <Label>Metode Bayar</Label>
-          <div className="flex gap-2">
-            <PayRadio name="metode_bayar" value="cash" label="Cash" onSelect={() => setMetode("cash")} />
-            <PayRadio name="metode_bayar" value="transfer" label="Transfer" onSelect={() => setMetode("transfer")} />
-          </div>
-        </div>
-        {metode === "transfer" && (
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="bukti">Bukti Transfer (wajib)</Label>
-            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" required />
-            <p className="text-xs text-muted-foreground">Wajib foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
-          </div>
-        )}
-      </div>
-
-      <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <Label>Kupon</Label>
-            <p className="text-xs text-muted-foreground">
-              {tanpaKupon ? "Peserta tidak mengambil kupon." : `${kupons.length} kupon di-scan.`}
-            </p>
-          </div>
-          {!tanpaKupon && (
-            <Button type="button" variant={scanOn ? "destructive" : "secondary"} size="sm" onClick={() => setScanOn((v) => !v)}>
-              {scanOn ? <><CameraOff /> Tutup Scanner</> : <><Camera /> Buka Scanner QR</>}
-            </Button>
-          )}
-        </div>
-
-        <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-background px-3 py-2 text-sm">
-          <input
-            type="checkbox"
-            name="tanpa_kupon"
-            checked={tanpaKupon}
-            onChange={(e) => toggleTanpaKupon(e.target.checked)}
-            className="mt-0.5 h-4 w-4"
-          />
-          <span>
-            <span className="font-medium">Tidak mengambil kupon</span>
-            <span className="block text-xs text-muted-foreground">
-              Centang bila peserta tidak mengambil kupon sama sekali. Simpan tanpa scan kupon.
-            </span>
-          </span>
-        </label>
-
-        {!tanpaKupon && (
-          <>
-            {scanOn && <QrScanner active={scanOn} onDetect={addKupon} />}
-            <div className="flex gap-2">
-              <Input
-                placeholder="Atau ketik manual: 2026A0001"
-                value={manual}
-                onChange={(e) => setManual(e.target.value)}
-                onKeyDown={(e) => { if (e.key === "Enter") { e.preventDefault(); addKupon(manual); setManual(""); } }}
-              />
-              <Button type="button" variant="outline" onClick={() => { addKupon(manual); setManual(""); }}>
-                <Plus /> Tambah
-              </Button>
-            </div>
-            {kupons.length > 0 && (
-              <div className="flex flex-wrap gap-2">
-                {kupons.map((k) => (
-                  <Badge key={k} variant="secondary" className="gap-1.5 px-2 py-1 font-mono text-sm">
-                    {k}
-                    <button type="button" onClick={() => removeKupon(k)} className="rounded-full hover:bg-background/40" aria-label={`Hapus ${k}`}>
-                      <X className="h-3 w-3" />
-                    </button>
-                    <input type="hidden" name="kupon" value={k} />
-                  </Badge>
-                ))}
-              </div>
-            )}
-          </>
-        )}
-      </div>
-
-      {state?.error && (
-        <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error}</div>
-      )}
-
-      <Button type="submit" disabled={pending} size="lg">
-        {pending ? <Loader2 className="animate-spin" /> : <Save />}
-        {pending ? "Menyimpan..." : tanpaKupon ? "Simpan (Tanpa Kupon)" : "Simpan & Assign Kupon"}
-      </Button>
-    </form>
-  );
-}
-
-function PayRadio({ name, value, label, onSelect }: { name: string; value: string; label: string; onSelect: () => void }) {
-  return (
-    <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground">
-      <input type="radio" name={name} value={value} required className="sr-only" onChange={onSelect} />
-      {label}
-    </label>
+      <TambahDonasiForm
+        key={selected.id}
+        anggotaId={selected.id}
+        kegiatan={kegiatan}
+        kegiatanAwalId={kegiatanAwalId}
+        noWhatsappSekarang={selected.no_whatsapp}
+      />
+    </div>
   );
 }

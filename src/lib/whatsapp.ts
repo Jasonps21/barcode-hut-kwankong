@@ -15,6 +15,10 @@ import {
  * Meta hanya menerima TEMPLATE yang sudah disetujui untuk pesan yang dimulai
  * bisnis, jadi isi pesan tidak lagi disusun di sini — yang dikirim hanya nilai
  * kelima variabelnya (lihat `buildTemplateParams`).
+ *
+ * Satu tanda terima = satu baris `donasi`. Status kirim, klaim, dan nomor TT
+ * menempel di donasi; tanda "jangan kirim" menempel di `anggota` karena yang
+ * bermasalah adalah nomornya, bukan setorannya.
  */
 
 const BASE_URL = (process.env.CRM_WA_BASE_URL ?? "https://crm.byjason.dev").replace(/\/+$/, "");
@@ -126,23 +130,23 @@ export async function ringkasanKuotaWa(): Promise<{ terkirim: number; batas: num
 /**
  * Klaim baris sebelum memanggil API: naikkan `wa_attempt_count` dari 0 ke 1
  * HANYA bila masih 0. Tidak ada baris terpengaruh berarti proses lain sudah
- * mengklaimnya (`after()` saat pendaftaran vs cron penadah), jadi pengiriman
+ * mengklaimnya (`after()` saat input donasi vs cron penadah), jadi pengiriman
  * dilewati. Duplikat berbiaya Rp 651 dan membuat donatur menerima dua tanda
  * terima bernomor sama.
  */
-async function klaimPeserta(admin: AdminClient, pesertaId: string): Promise<boolean> {
+async function klaimDonasi(admin: AdminClient, donasiId: string): Promise<boolean> {
   const { data } = await admin
-    .from("peserta")
+    .from("donasi")
     .update({ wa_attempt_count: 1 })
-    .eq("id", pesertaId)
+    .eq("id", donasiId)
     .eq("wa_attempt_count", 0)
     .select("id");
   return (data ?? []).length > 0;
 }
 
 /** Lepaskan klaim agar baris bisa diambil putaran cron berikutnya. */
-async function lepasKlaim(admin: AdminClient, pesertaId: string): Promise<void> {
-  await admin.from("peserta").update({ wa_attempt_count: 0 }).eq("id", pesertaId);
+async function lepasKlaim(admin: AdminClient, donasiId: string): Promise<void> {
+  await admin.from("donasi").update({ wa_attempt_count: 0 }).eq("id", donasiId);
 }
 
 /**
@@ -157,13 +161,22 @@ async function lepasKlaim(admin: AdminClient, pesertaId: string): Promise<void> 
  * masih `pending` tapi belum diklaim siapa pun. Baris yang sedang dikirim
  * ditolak, dan pemanggil cukup diam.
  */
-export async function klaimKirimUlang(pesertaId: string): Promise<boolean> {
+export async function klaimKirimUlang(donasiId: string): Promise<boolean> {
   const admin = createAdminClient();
+
+  // Tanda "jangan kirim" ada di anggota; UPDATE pada donasi tidak bisa
+  // menyaring kolom tabel lain, jadi diperiksa lebih dulu lewat view.
+  const { data: cek } = await admin
+    .from("donasi_lengkap")
+    .select("wa_dikecualikan")
+    .eq("id", donasiId)
+    .maybeSingle();
+  if (!cek || (cek as { wa_dikecualikan: boolean | null }).wa_dikecualikan) return false;
+
   const { data } = await admin
-    .from("peserta")
+    .from("donasi")
     .update({ wa_status: "pending", wa_attempt_count: 1 })
-    .eq("id", pesertaId)
-    .eq("wa_dikecualikan", false)
+    .eq("id", donasiId)
     .or("wa_status.neq.pending,wa_attempt_count.eq.0")
     .select("id");
   return (data ?? []).length > 0;
@@ -171,13 +184,13 @@ export async function klaimKirimUlang(pesertaId: string): Promise<boolean> {
 
 async function catatLog(
   admin: AdminClient,
-  pesertaId: string,
+  donasiId: string,
   status: "sent" | "failed",
   body: unknown,
   errorMessage: string | null,
 ): Promise<void> {
   await admin.from("wa_log").insert({
-    peserta_id: pesertaId,
+    donasi_id: donasiId,
     status,
     // Nama kolomnya warisan Fonnte; kini berisi balasan crm-wa. Tidak diganti
     // karena butuh migrasi Supabase serentak dengan halaman WA Log.
@@ -191,33 +204,34 @@ async function catatLog(
 export const PREFIX_ALASAN_OTOMATIS = "Otomatis:";
 
 /**
- * Keluarkan satu peserta dari antrean SELAMANYA karena nomornya tidak lolos
+ * Keluarkan satu donasi dari antrean karena nomor anggotanya tidak lolos
  * `normalizeWaNumber`.
  *
- * Dulu baris seperti ini disetel `failed` — status yang justru jadi sasaran
- * tombol "Antre ulang", sehingga nomor rusak terangkut berulang tanpa pernah
- * bisa berhasil. Sekarang statusnya tetap `failed` agar riwayatnya jujur, tapi
- * `wa_dikecualikan` menahannya di luar antrean sampai nomornya diperbaiki.
+ * Status donasinya `failed` agar riwayatnya jujur, dan tanda `wa_dikecualikan`
+ * dipasang di ANGGOTA — supaya donasi lain milik orang yang sama juga tidak
+ * dicoba sampai nomornya diperbaiki.
  */
-async function kecualikanOtomatis(admin: AdminClient, pesertaId: string): Promise<void> {
+async function kecualikanOtomatis(admin: AdminClient, donasiId: string, anggotaId: string): Promise<void> {
   await admin
-    .from("peserta")
+    .from("donasi")
+    .update({ wa_status: "failed", wa_attempt_count: 0 })
+    .eq("id", donasiId);
+  await admin
+    .from("anggota")
     .update({
-      wa_status: "failed",
-      wa_attempt_count: 0,
       wa_dikecualikan: true,
       wa_alasan_kecuali: `${PREFIX_ALASAN_OTOMATIS} nomor WhatsApp tidak valid`,
     })
-    .eq("id", pesertaId);
-  await catatLog(admin, pesertaId, "failed", null, "Nomor WhatsApp tidak valid");
+    .eq("id", anggotaId);
+  await catatLog(admin, donasiId, "failed", null, "Nomor WhatsApp tidak valid");
 }
 
 /**
- * Sapu seluruh tabel peserta, tandai setiap nomor yang tidak lolos validasi.
+ * Sapu seluruh tabel anggota, tandai setiap nomor yang tidak lolos validasi.
  *
  * Dipakai sekali di halaman Log WhatsApp untuk membersihkan data lama sekaligus,
  * supaya admin tidak perlu menunggu cron menemukannya satu per satu. TIDAK
- * mengirim apa pun dan tidak menyentuh peserta yang sudah dikecualikan manual —
+ * mengirim apa pun dan tidak menyentuh anggota yang sudah dikecualikan manual —
  * hanya menambah tanda pada yang nomornya memang tidak bisa dipakai.
  *
  * Validasinya dijalankan di JavaScript, bukan sebagai regex SQL, supaya tidak
@@ -227,9 +241,11 @@ export async function tandaiNomorTidakValid(): Promise<{ ditandai: number; diper
   const admin = createAdminClient();
 
   const { data } = await admin
-    .from("peserta")
+    .from("anggota")
     .select("id, no_whatsapp")
-    .eq("wa_dikecualikan", false);
+    .eq("wa_dikecualikan", false)
+    // Batas bawaan PostgREST 1000 baris; anggota sudah lewat angka itu.
+    .limit(20000);
 
   const rows = (data ?? []) as Array<{ id: string; no_whatsapp: string | null }>;
   const rusak = rows.filter((r) => !normalizeWaNumber(r.no_whatsapp ?? "")).map((r) => r.id);
@@ -238,7 +254,7 @@ export async function tandaiNomorTidakValid(): Promise<{ ditandai: number; diper
   // Dipotong per 500 id agar URL PostgREST tidak kepanjangan.
   for (let i = 0; i < rusak.length; i += 500) {
     await admin
-      .from("peserta")
+      .from("anggota")
       .update({
         wa_dikecualikan: true,
         wa_alasan_kecuali: `${PREFIX_ALASAN_OTOMATIS} nomor WhatsApp tidak valid`,
@@ -250,7 +266,7 @@ export async function tandaiNomorTidakValid(): Promise<{ ditandai: number; diper
 }
 
 /**
- * Hitung berapa peserta yang saat ini dikecualikan, dan berapa di antaranya
+ * Hitung berapa anggota yang saat ini dikecualikan, dan berapa di antaranya
  * ditandai sistem. Dipakai halaman Log WhatsApp untuk menunjukkan bahwa
  * angka "gagal" yang besar sebagian besar memang bukan antrean nyata.
  */
@@ -258,12 +274,12 @@ export async function ringkasanPengecualian(): Promise<{ total: number; otomatis
   const admin = createAdminClient();
 
   const { count: total } = await admin
-    .from("peserta")
+    .from("anggota")
     .select("id", { count: "exact", head: true })
     .eq("wa_dikecualikan", true);
 
   const { count: otomatis } = await admin
-    .from("peserta")
+    .from("anggota")
     .select("id", { count: "exact", head: true })
     .eq("wa_dikecualikan", true)
     .like("wa_alasan_kecuali", `${PREFIX_ALASAN_OTOMATIS}%`);
@@ -274,7 +290,7 @@ export async function ringkasanPengecualian(): Promise<{ total: number; otomatis
 /** Kirim satu pesan untuk baris yang SUDAH diklaim. */
 async function kirimTerklaim(
   admin: AdminClient,
-  pesertaId: string,
+  donasiId: string,
   target: string,
   template: WaTemplateInput,
 ): Promise<Outcome> {
@@ -284,25 +300,25 @@ async function kirimTerklaim(
     const result = await callCrmWa(target, parameters);
 
     if (result.outcome === "rate_limited") {
-      await catatLog(admin, pesertaId, "failed", result.body, `Batas laju crm-wa: ${result.reason}`);
-      await lepasKlaim(admin, pesertaId);
+      await catatLog(admin, donasiId, "failed", result.body, `Batas laju crm-wa: ${result.reason}`);
+      await lepasKlaim(admin, donasiId);
       return "rate_limited";
     }
 
     await catatLog(
       admin,
-      pesertaId,
+      donasiId,
       result.outcome === "sent" ? "sent" : "failed",
       result.body,
       result.outcome === "sent" ? null : result.reason,
     );
 
     if (result.outcome === "sent") {
-      await admin.from("peserta").update({
+      await admin.from("donasi").update({
         wa_status: "sent",
         wa_sent_at: new Date().toISOString(),
         wa_attempt_count: attempt,
-      }).eq("id", pesertaId);
+      }).eq("id", donasiId);
       return "sent";
     }
 
@@ -312,19 +328,20 @@ async function kirimTerklaim(
     if (attempt < MAX_ATTEMPTS) await sleep(RETRY_DELAY_MS);
   }
 
-  await admin.from("peserta").update({
+  await admin.from("donasi").update({
     wa_status: "failed",
     wa_attempt_count: MAX_ATTEMPTS,
-  }).eq("id", pesertaId);
+  }).eq("id", donasiId);
   return "failed";
 }
 
 /**
- * Kirim tanda terima untuk satu peserta. Aman dipanggil berkali-kali: barisnya
+ * Kirim tanda terima untuk satu donasi. Aman dipanggil berkali-kali: barisnya
  * diklaim lebih dulu, jadi hanya satu proses yang benar-benar mengirim.
  */
-export async function sendPesertaWa(opts: {
-  pesertaId: string;
+export async function sendDonasiWa(opts: {
+  donasiId: string;
+  anggotaId: string;
   noWhatsapp: string;
   template: WaTemplateInput;
   /** Setel true bila pemanggil sudah mengklaim barisnya via `klaimKirimUlang`. */
@@ -334,35 +351,36 @@ export async function sendPesertaWa(opts: {
   const target = normalizeWaNumber(opts.noWhatsapp);
 
   if (!target) {
-    await kecualikanOtomatis(admin, opts.pesertaId);
+    await kecualikanOtomatis(admin, opts.donasiId, opts.anggotaId);
     return;
   }
 
   // Lewati bila jatah 24 jam habis; barisnya tetap `pending` dan disusul cron.
   if ((await hitungTerkirim24Jam(admin)) >= BATAS_24JAM) {
-    if (opts.sudahDiklaim) await lepasKlaim(admin, opts.pesertaId);
+    if (opts.sudahDiklaim) await lepasKlaim(admin, opts.donasiId);
     return;
   }
 
-  if (!opts.sudahDiklaim && !(await klaimPeserta(admin, opts.pesertaId))) return;
+  if (!opts.sudahDiklaim && !(await klaimDonasi(admin, opts.donasiId))) return;
 
-  await kirimTerklaim(admin, opts.pesertaId, target, opts.template);
+  await kirimTerklaim(admin, opts.donasiId, target, opts.template);
 }
 
-interface PendingPeserta {
+interface PendingDonasi {
   id: string;
+  anggota_id: string;
   nama: string;
-  alamat: string;
-  no_whatsapp: string;
+  alamat: string | null;
+  no_whatsapp: string | null;
   nominal_donasi: number | string;
   nomor_tt: number | null;
   registered_at: string | null;
 }
 
 /**
- * Proses antrean WA: kirim tanda terima untuk semua peserta ber-status
- * `pending` yang sudah terdaftar. Dipanggil oleh cron, BUKAN oleh request
- * pendaftaran — supaya request tidak tertahan menunggu API.
+ * Proses antrean WA: kirim tanda terima untuk semua donasi ber-status
+ * `pending`. Dipanggil oleh cron, BUKAN oleh request input donasi — supaya
+ * request tidak tertahan menunggu API.
  */
 export async function processPendingWa(limit = BATCH): Promise<{ processed: number }> {
   const admin = createAdminClient();
@@ -373,36 +391,35 @@ export async function processPendingWa(limit = BATCH): Promise<{ processed: numb
   const ambil = Math.max(1, Math.min(limit, BATCH, BATAS_24JAM - terkirim24));
 
   const { data } = await admin
-    .from("peserta")
-    .select("id, nama, alamat, no_whatsapp, nominal_donasi, nomor_tt, registered_at")
+    .from("donasi_lengkap")
+    .select("id, anggota_id, nama, alamat, no_whatsapp, nominal_donasi, nomor_tt, registered_at")
     .eq("wa_status", "pending")
     // Baris ber-attempt > 0 tidak akan lolos klaim; jangan habiskan jatah batch.
     .eq("wa_attempt_count", 0)
     // Penjaga terakhir: apa pun yang ditandai jangan-kirim tidak ikut diambil,
     // sekalipun status `pending`-nya tersisa dari sebelum ditandai.
     .eq("wa_dikecualikan", false)
-    .not("registered_at", "is", null)
     .order("registered_at", { ascending: true })
     .limit(ambil);
 
-  const rows = (data ?? []) as PendingPeserta[];
+  const rows = (data ?? []) as PendingDonasi[];
   let processed = 0;
 
   for (const p of rows) {
     if (terkirim24 >= BATAS_24JAM) break;
 
-    const target = normalizeWaNumber(p.no_whatsapp);
+    const target = normalizeWaNumber(p.no_whatsapp ?? "");
     if (!target) {
-      await kecualikanOtomatis(admin, p.id);
+      await kecualikanOtomatis(admin, p.id, p.anggota_id);
       continue;
     }
 
-    if (!(await klaimPeserta(admin, p.id))) continue;
+    if (!(await klaimDonasi(admin, p.id))) continue;
 
     // Pastikan nomor tanda terima sudah ada.
     let nomorTT = p.nomor_tt;
     if (!nomorTT) {
-      const { data: n } = await admin.rpc("assign_nomor_tt", { p_id: p.id });
+      const { data: n } = await admin.rpc("assign_nomor_tt_donasi", { p_donasi_id: p.id });
       const num = Number(n);
       nomorTT = Number.isFinite(num) && num > 0 ? num : null;
     }
@@ -412,7 +429,7 @@ export async function processPendingWa(limit = BATCH): Promise<{ processed: numb
     const hasil = await kirimTerklaim(admin, p.id, target, {
       nomor: formatNomorTT(nomorTT, p.registered_at),
       nama: p.nama,
-      alamat: p.alamat,
+      alamat: p.alamat ?? "",
       nominal_donasi: p.nominal_donasi,
       tanggal: formatTanggalIndo(p.registered_at),
     });

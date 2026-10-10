@@ -3,33 +3,20 @@ import { ambilSemuaBaris, type QueryBisaRange } from "@/lib/query-semua";
 
 /**
  * DEFINISI TUNGGAL "donasi yang dihitung", dipakai SEMUA halaman & export:
- * peserta yang sudah selesai registrasi (`registered_at` terisi) DAN nominalnya
- * di atas nol.
+ * baris view `donasi_lengkap` milik SATU kegiatan.
  *
- * Dulu tiap halaman memakai syaratnya sendiri — Transaksi tanpa cek
- * `registered_at`, Dashboard dengan cek — sehingga total cash/transfer berbeda
- * antar halaman untuk data yang sama. Jangan menyalin filter ini secara manual;
- * panggil fungsi ini supaya definisinya tetap satu.
+ * Tabel `donasi` sudah menolak nominal nol di database, jadi syarat yang
+ * tersisa hanya kegiatannya. Syarat itu tetap dipusatkan di sini karena
+ * menjumlahkan uang lintas kegiatan tanpa sadar adalah kesalahan yang paling
+ * mudah terjadi sejak satu anggota bisa menyumbang di banyak acara.
+ * `kegiatanId` null = sengaja lintas kegiatan.
  */
 interface FilterDonasi {
-  not(column: string, operator: string, value: unknown): FilterDonasi;
-  gt(column: string, value: unknown): FilterDonasi;
+  eq(column: string, value: unknown): FilterDonasi;
 }
-export function hanyaDonasiTerhitung<T>(query: T): T {
-  const q = query as unknown as FilterDonasi;
-  return q.not("registered_at", "is", null).gt("nominal_donasi", 0) as unknown as T;
-}
-
-/**
- * Versi in-memory dari `hanyaDonasiTerhitung`, untuk baris yang sudah terlanjur
- * diambil (mis. daftar aktivitas petugas yang tetap ingin menampilkan peserta
- * tanpa donasi). Definisinya wajib sama persis dengan filter di atas.
- */
-export function adalahDonasiTerhitung(row: {
-  registered_at: string | null;
-  nominal_donasi: number | string | null;
-}): boolean {
-  return row.registered_at != null && Number(row.nominal_donasi ?? 0) > 0;
+export function hanyaDonasiTerhitung<T>(query: T, kegiatanId: string | null): T {
+  if (!kegiatanId) return query;
+  return (query as unknown as FilterDonasi).eq("kegiatan_id", kegiatanId) as unknown as T;
 }
 
 /**

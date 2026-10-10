@@ -12,8 +12,9 @@ import { KirimUlangButton } from "@/components/ui/kirim-ulang-button";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { formatRupiah, formatTanggalJamWITA } from "@/lib/utils";
 import { hanyaDonasiTerhitung, sumNominalDonasi } from "@/lib/donasi-sum";
+import { pilihKegiatan } from "@/lib/kegiatan";
 import { buildWaMessage, normalizeWaNumber, formatNomorTT, formatTanggalIndo } from "@/lib/wa-template";
-import { resendWaAction } from "../peserta/actions";
+import { kirimUlangWaAction } from "./actions";
 import { toggleKecualikanAction } from "../wa-log/actions";
 import { KuponDetailModal } from "./kupon-detail-modal";
 import { CopyPesanButton } from "./copy-pesan-button";
@@ -22,7 +23,7 @@ import { CopyPesanButton } from "./copy-pesan-button";
 export const maxDuration = 60;
 
 interface TransaksiRow {
-  id: string; nama: string; no_whatsapp: string;
+  id: string; anggota_id: string; nama: string; no_whatsapp: string;
   nominal_donasi: number | string; metode_bayar: string | null;
   nomor_tt: number | null; registered_at: string | null;
   wa_status: string; wa_sent_at: string | null; wa_attempt_count: number;
@@ -43,11 +44,13 @@ function waBadge(status: string) {
 }
 
 export default async function TransaksiPage(props: {
-  searchParams: Promise<{ kelompok?: string; wa?: string; q?: string; per?: string; page?: string }>;
+  searchParams: Promise<{ kegiatan?: string; kelompok?: string; wa?: string; q?: string; per?: string; page?: string }>;
 }) {
   const profile = await requireProfile(["admin", "petugas_pendaftaran"]);
   const sp = await props.searchParams;
   const supabase = await createClient();
+  const { kegiatan, semua: semuaKegiatan } = await pilihKegiatan(sp.kegiatan);
+  const kegiatanId = kegiatan?.id ?? null;
 
   const q = (sp.q ?? "").trim();
   const waStatus = WA_STATUS_OPTIONS.includes(sp.wa as (typeof WA_STATUS_OPTIONS)[number]) ? sp.wa! : "all";
@@ -62,16 +65,19 @@ export default async function TransaksiPage(props: {
 
   const query = hanyaDonasiTerhitung(
     supabase
-      .from("peserta")
+      .from("donasi_lengkap")
       .select(
-        "id, nama, no_whatsapp, alamat, nominal_donasi, metode_bayar, nomor_tt, registered_at, wa_status, wa_sent_at, wa_attempt_count, wa_dikecualikan, wa_alasan_kecuali, kelompok_id, kelompok(nama)",
+        "id, anggota_id, nama, no_whatsapp, alamat, nominal_donasi, metode_bayar, nomor_tt, registered_at, wa_status, wa_sent_at, wa_attempt_count, wa_dikecualikan, wa_alasan_kecuali, kelompok_id, kelompok:kelompok_id(nama)",
         { count: "exact" },
       )
       .order("registered_at", { ascending: false, nullsFirst: false })
       .order("id", { ascending: true }),
+    kegiatanId,
   );
   if (kelompokFilter) query.eq("kelompok_id", kelompokFilter);
-  if (waStatus !== "all") query.eq("wa_status", waStatus);
+  // "Dikecualikan" adalah tanda di anggota, bukan nilai wa_status.
+  if (waStatus === "dikecualikan") query.eq("wa_dikecualikan", true);
+  else if (waStatus !== "all") query.eq("wa_status", waStatus);
   if (q) {
     const like = `%${q}%`;
     query.or(`nama.ilike.${like},no_whatsapp.ilike.${like}`);
@@ -82,10 +88,12 @@ export default async function TransaksiPage(props: {
   // transaksi (kelompok/status WA/pencarian) tapi mencakup SEMUA halaman.
   function donasiByMetode(metode: "cash" | "transfer") {
     let m = hanyaDonasiTerhitung(
-      supabase.from("peserta").select("nominal_donasi").order("id", { ascending: true }),
+      supabase.from("donasi_lengkap").select("nominal_donasi").order("id", { ascending: true }),
+      kegiatanId,
     ).eq("metode_bayar", metode);
     if (kelompokFilter) m = m.eq("kelompok_id", kelompokFilter);
-    if (waStatus !== "all") m = m.eq("wa_status", waStatus);
+    if (waStatus === "dikecualikan") m = m.eq("wa_dikecualikan", true);
+    else if (waStatus !== "all") m = m.eq("wa_status", waStatus);
     if (q) {
       const like = `%${q}%`;
       m = m.or(`nama.ilike.${like},no_whatsapp.ilike.${like}`);
@@ -99,6 +107,7 @@ export default async function TransaksiPage(props: {
     .from("kupon")
     .select("id", { count: "exact", head: true })
     .in("status", ["assigned", "redeemed"]);
+  if (kegiatanId) kuponDiedarkanQuery = kuponDiedarkanQuery.eq("kegiatan_id", kegiatanId);
   if (kelompokFilter) kuponDiedarkanQuery = kuponDiedarkanQuery.eq("kelompok_id", kelompokFilter);
 
   const [
@@ -140,19 +149,19 @@ export default async function TransaksiPage(props: {
     return `https://wa.me/${target}?text=${encodeURIComponent(message)}`;
   }
 
-  // Nomor kupon per peserta — dipakai untuk link WA manual & modal detail kupon.
+  // Nomor kupon per setoran — dipakai untuk link WA manual & modal detail kupon.
   const kuponByPeserta = new Map<string, string[]>();
   if (rows.length) {
     const { data: kData } = await supabase
       .from("kupon")
-      .select("peserta_id, nomor_kupon")
-      .in("peserta_id", rows.map((r) => r.id))
+      .select("donasi_id, nomor_kupon")
+      .in("donasi_id", rows.map((r) => r.id))
       .order("nomor_kupon");
-    for (const k of (kData ?? []) as Array<{ peserta_id: string | null; nomor_kupon: string }>) {
-      if (!k.peserta_id) continue;
-      const list = kuponByPeserta.get(k.peserta_id) ?? [];
+    for (const k of (kData ?? []) as Array<{ donasi_id: string | null; nomor_kupon: string }>) {
+      if (!k.donasi_id) continue;
+      const list = kuponByPeserta.get(k.donasi_id) ?? [];
       list.push(k.nomor_kupon);
-      kuponByPeserta.set(k.peserta_id, list);
+      kuponByPeserta.set(k.donasi_id, list);
     }
   }
   const kuponCount = new Map<string, number>(
@@ -161,6 +170,7 @@ export default async function TransaksiPage(props: {
 
   function hrefWith(overrides: Record<string, string | undefined>): string {
     const params = new URLSearchParams();
+    if (kegiatanId) params.set("kegiatan", kegiatanId);
     if (sp.kelompok) params.set("kelompok", sp.kelompok);
     if (waStatus !== "all") params.set("wa", waStatus);
     if (q) params.set("q", q);
@@ -180,7 +190,9 @@ export default async function TransaksiPage(props: {
     <div className="space-y-6">
       <div>
         <h1 className="text-3xl font-bold tracking-tight">Transaksi</h1>
-        <p className="text-sm text-muted-foreground">Daftar transaksi donasi peserta & status pengiriman WhatsApp.</p>
+        <p className="text-sm text-muted-foreground">
+          Setoran {kegiatan ? `kegiatan ${kegiatan.nama}` : "semua kegiatan"} & status pengiriman WhatsApp.
+        </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-5">
@@ -219,7 +231,15 @@ export default async function TransaksiPage(props: {
       {/* Filter & pencarian */}
       <form className="flex flex-wrap items-end gap-2">
         <div className="flex-1 space-y-1 sm:flex-none">
-          <label htmlFor="q" className="text-xs font-medium text-muted-foreground">Cari peserta</label>
+          <label htmlFor="kegiatan" className="text-xs font-medium text-muted-foreground">Kegiatan</label>
+          <Select id="kegiatan" name="kegiatan" defaultValue={kegiatanId ?? ""} className="w-full sm:w-56">
+            {semuaKegiatan.map((k) => (
+              <option key={k.id} value={k.id}>{k.nama}{k.aktif ? " (berjalan)" : ""}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="flex-1 space-y-1 sm:flex-none">
+          <label htmlFor="q" className="text-xs font-medium text-muted-foreground">Cari anggota</label>
           <div className="relative">
             <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
             <Input id="q" name="q" defaultValue={q} placeholder="Nama / no HP" className="w-full pl-9 sm:w-64" />
@@ -267,7 +287,7 @@ export default async function TransaksiPage(props: {
             <TableHeader>
               <TableRow>
                 <TableHead>Waktu</TableHead>
-                <TableHead>Peserta</TableHead>
+                <TableHead>Anggota</TableHead>
                 <TableHead>Kelompok</TableHead>
                 <TableHead className="text-right">Donasi</TableHead>
                 <TableHead>Bayar</TableHead>
@@ -289,13 +309,13 @@ export default async function TransaksiPage(props: {
                 const totalKupon = kuponCount.get(p.id) ?? 0;
                 const pesan = buildPesan(p, totalKupon);
                 const waLink = buildWaLink(p, pesan);
-                const hasWa = Boolean(normalizeWaNumber(p.no_whatsapp));
+                const hasWa = Boolean(normalizeWaNumber(p.no_whatsapp ?? ""));
                 const dikecualikan = Boolean(p.wa_dikecualikan);
                 return (
                   <TableRow key={p.id}>
                     <TableCell className="whitespace-nowrap text-xs">{formatTanggalJamWITA(p.registered_at)}</TableCell>
                     <TableCell>
-                      <div className="text-sm font-medium">{p.nama}</div>
+                      <Link href={`/anggota/${p.anggota_id}`} className="block text-sm font-medium hover:underline">{p.nama}</Link>
                       <div className="font-mono text-xs text-muted-foreground">{p.no_whatsapp || "-"}</div>
                     </TableCell>
                     <TableCell>{p.kelompok?.nama ?? "-"}</TableCell>
@@ -327,22 +347,22 @@ export default async function TransaksiPage(props: {
                       <div className="flex flex-wrap justify-end gap-2">
                         {profile.role === "admin" && (
                           <Link
-                            href={`/peserta/${p.id}/edit`}
-                            title="Edit nominal donasi & kupon peserta ini"
+                            href={`/transaksi/${p.id}`}
+                            title="Ubah nominal & kupon setoran ini"
                             className="inline-flex h-8 items-center gap-1.5 rounded-md border bg-background px-3 text-xs font-medium shadow-sm transition-colors hover:bg-accent [&_svg]:size-3.5"
                           >
                             <Pencil /> Edit
                           </Link>
                         )}
                         {hasWa && !dikecualikan && (
-                          <form action={resendWaAction}>
-                            <input type="hidden" name="peserta_id" value={p.id} />
+                          <form action={kirimUlangWaAction}>
+                            <input type="hidden" name="donasi_id" value={p.id} />
                             <KirimUlangButton />
                           </form>
                         )}
                         {profile.role === "admin" && (
                           <form action={toggleKecualikanAction}>
-                            <input type="hidden" name="peserta_id" value={p.id} />
+                            <input type="hidden" name="anggota_id" value={p.anggota_id} />
                             <input type="hidden" name="jadikan" value={dikecualikan ? "0" : "1"} />
                             <ConfirmButton
                               type="submit"

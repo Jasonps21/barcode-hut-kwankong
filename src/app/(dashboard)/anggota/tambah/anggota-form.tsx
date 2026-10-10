@@ -7,32 +7,42 @@ import { Input } from "@/components/ui/input";
 import { RupiahInput } from "@/components/ui/rupiah-input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
+import { Select } from "@/components/ui/select";
 import { Combobox } from "@/components/ui/combobox";
 import { QrScanner } from "@/components/scanner/qr-scanner";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { daftarProvinsi, kotaUntukProvinsi, semuaKota } from "@/lib/wilayah";
-import { createPesertaAction, createJenisUsahaAction, type CreatePesertaState } from "../actions";
+import { createAnggotaAction, createJenisUsahaAction, type AksiState } from "../actions";
 import { NomorUsahaEditor, emptyNomorUsahaRow, type NomorUsahaRow } from "../nomor-usaha-editor";
+import type { PilihanKegiatan } from "../[id]/tambah-donasi-form";
 
-export function PesertaForm({
+/** Tanggal hari ini dalam format yang diterima <input type="date"> (WITA). */
+function hariIni(): string {
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Makassar", year: "numeric", month: "2-digit", day: "2-digit",
+  }).format(new Date());
+}
+
+export function AnggotaForm({
   isAdmin = false,
-  kelompokOptions = [],
+  bukuOptions = [],
   jenisUsahaOptions = [],
+  kegiatan = [],
+  kegiatanAwalId = "",
 }: {
   isAdmin?: boolean;
-  kelompokOptions?: { id: string; nama: string }[];
+  bukuOptions?: { id: string; nama: string }[];
   jenisUsahaOptions?: { id: string; nama: string }[];
+  kegiatan?: PilihanKegiatan[];
+  kegiatanAwalId?: string;
 }) {
-  const [state, action, pending] = useActionState<CreatePesertaState, FormData>(
-    createPesertaAction,
-    undefined,
-  );
+  const [state, action, pending] = useActionState<AksiState, FormData>(createAnggotaAction, undefined);
   const [kupons, setKupons] = useState<string[]>([]);
   const [scanOn, setScanOn] = useState(false);
   const [manual, setManual] = useState("");
   const [namaHanzi, setNamaHanzi] = useState("");
   const [metode, setMetode] = useState("");
-  const [tanpaKupon, setTanpaKupon] = useState(false);
+  const [kegiatanId, setKegiatanId] = useState(kegiatanAwalId);
   const pinyinPreview = useMemo(() => hanziToPinyin(namaHanzi), [namaHanzi]);
 
   const [provinsi, setProvinsi] = useState("");
@@ -41,6 +51,9 @@ export function PesertaForm({
   const [jenisUsahaId, setJenisUsahaId] = useState("");
   const [noWhatsapp, setNoWhatsapp] = useState("");
   const [nomorUsaha, setNomorUsaha] = useState<NomorUsahaRow[]>([emptyNomorUsahaRow()]);
+
+  const terpilih = kegiatan.find((k) => k.id === kegiatanId);
+  const pakaiKupon = terpilih?.pakai_kupon ?? false;
 
   const kotaOptions = useMemo(
     () => (provinsi ? kotaUntukProvinsi(provinsi) : semuaKota()),
@@ -52,15 +65,6 @@ export function PesertaForm({
     if ("error" in result) return;
     setJenisUsahaList((prev) => (prev.some((j) => j.id === result.id) ? prev : [...prev, result].sort((a, b) => a.nama.localeCompare(b.nama))));
     setJenisUsahaId(result.id);
-  }
-
-  function toggleTanpaKupon(checked: boolean) {
-    setTanpaKupon(checked);
-    if (checked) {
-      setKupons([]);
-      setScanOn(false);
-      setManual("");
-    }
   }
 
   function addKupon(raw: string) {
@@ -88,7 +92,6 @@ export function PesertaForm({
             placeholder="08xxxxxxxxxx"
             value={noWhatsapp}
             onChange={(e) => setNoWhatsapp(e.target.value)}
-            required
           />
         </div>
         <div className="space-y-2 md:col-span-2">
@@ -101,7 +104,6 @@ export function PesertaForm({
             placeholder="陳為慶"
             lang="zh"
           />
-          <input type="hidden" name="pinyin" value={pinyinPreview} />
           {namaHanzi.trim() && (
             <p className="text-xs text-muted-foreground">
               Pinyin (otomatis):{" "}
@@ -157,86 +159,93 @@ export function PesertaForm({
           <Label htmlFor="keterangan">Keterangan (merk/tipe barang)</Label>
           <Input id="keterangan" name="keterangan" placeholder="mis. TV LG, Genset Yamaha" />
         </div>
-        <div className="space-y-2">
-          <Label htmlFor="nominal_donasi">Nominal Donasi</Label>
-          <RupiahInput id="nominal_donasi" name="nominal_donasi" placeholder="0" required />
-        </div>
-        <div className="space-y-2">
-          <Label>Metode Bayar</Label>
-          <div className="flex gap-2">
-            <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground">
-              <input type="radio" name="metode_bayar" value="cash" required className="sr-only" onChange={() => setMetode("cash")} /> Cash
-            </label>
-            <label className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground">
-              <input type="radio" name="metode_bayar" value="transfer" required className="sr-only" onChange={() => setMetode("transfer")} /> Transfer
-            </label>
-          </div>
-        </div>
-        {metode === "transfer" && (
+        {isAdmin && (
           <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="bukti">Bukti Transfer (wajib)</Label>
-            <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" required />
-            <p className="text-xs text-muted-foreground">Wajib foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
+            <Label htmlFor="buku_id">Buku Penagihan</Label>
+            <Select id="buku_id" name="buku_id" required defaultValue="">
+              <option value="" disabled>Pilih buku…</option>
+              {bukuOptions.map((k) => (
+                <option key={k.id} value={k.id}>{k.nama}</option>
+              ))}
+            </Select>
           </div>
         )}
       </div>
 
       <NomorUsahaEditor noWhatsapp={noWhatsapp} rows={nomorUsaha} onChange={setNomorUsaha} />
 
-      <div className="space-y-3 rounded-lg border bg-muted/30 p-4">
-        <div className="flex flex-wrap items-center justify-between gap-2">
-          <div>
-            <Label>Kupon</Label>
-            <p className="text-xs text-muted-foreground">
-              {tanpaKupon
-                ? "Peserta tidak mengambil kupon."
-                : `${kupons.length} kupon di-scan. Kelompok ditentukan otomatis dari kupon.`}
-            </p>
+      <div className="space-y-4 rounded-lg border p-4">
+        <div>
+          <Label className="text-base">Setoran pertama (opsional)</Label>
+          <p className="text-xs text-muted-foreground">
+            Kosongkan nominal bila anggota ini baru didata dan belum menyetor.
+          </p>
+        </div>
+
+        <div className="grid gap-4 md:grid-cols-2">
+          <div className="space-y-2 md:col-span-2">
+            <Label htmlFor="kegiatan_id">Kegiatan</Label>
+            <Select
+              id="kegiatan_id"
+              name="kegiatan_id"
+              value={kegiatanId}
+              onChange={(e) => {
+                setKegiatanId(e.target.value);
+                setKupons([]);
+                setScanOn(false);
+              }}
+            >
+              {kegiatan.map((k) => (
+                <option key={k.id} value={k.id}>
+                  {k.nama}
+                  {k.aktif ? " (berjalan)" : ""}
+                  {k.pakai_kupon ? "" : " (tanpa kupon)"}
+                </option>
+              ))}
+            </Select>
           </div>
-          {!tanpaKupon && (
-            <Button type="button" variant={scanOn ? "destructive" : "secondary"} size="sm" onClick={() => setScanOn((v) => !v)}>
-              {scanOn ? <><CameraOff /> Tutup Scanner</> : <><Camera /> Buka Scanner QR</>}
-            </Button>
+          <div className="space-y-2">
+            <Label htmlFor="nominal">Nominal Donasi</Label>
+            <RupiahInput id="nominal" name="nominal" placeholder="0" />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="tanggal">Tanggal Setor</Label>
+            <Input id="tanggal" name="tanggal" type="date" defaultValue={hariIni()} />
+          </div>
+          <div className="space-y-2 md:col-span-2">
+            <Label>Metode Bayar</Label>
+            <div className="flex gap-2">
+              {(["cash", "transfer"] as const).map((m) => (
+                <label
+                  key={m}
+                  className="flex flex-1 cursor-pointer items-center justify-center gap-2 rounded-md border px-3 py-2 text-sm font-medium capitalize transition-colors has-[:checked]:border-primary has-[:checked]:bg-primary has-[:checked]:text-primary-foreground"
+                >
+                  <input type="radio" name="metode_bayar" value={m} className="sr-only" onChange={() => setMetode(m)} />
+                  {m}
+                </label>
+              ))}
+            </div>
+          </div>
+          {metode === "transfer" && (
+            <div className="space-y-2 md:col-span-2">
+              <Label htmlFor="bukti">Bukti Transfer (wajib)</Label>
+              <Input id="bukti" name="bukti" type="file" accept="image/*,application/pdf" required />
+              <p className="text-xs text-muted-foreground">Wajib foto/scan bukti transfer (JPG/PNG/PDF, maks 8MB).</p>
+            </div>
           )}
         </div>
 
-        <label className="flex cursor-pointer items-start gap-2 rounded-md border bg-background px-3 py-2 text-sm">
-          <input
-            type="checkbox"
-            name="tanpa_kupon"
-            checked={tanpaKupon}
-            onChange={(e) => toggleTanpaKupon(e.target.checked)}
-            className="mt-0.5 h-4 w-4"
-          />
-          <span>
-            <span className="font-medium">Tidak mengambil kupon</span>
-            <span className="block text-xs text-muted-foreground">
-              Centang bila peserta tidak mengambil kupon sama sekali. Simpan tanpa scan kupon.
-            </span>
-          </span>
-        </label>
-
-        {tanpaKupon ? (
-          isAdmin && (
-            <div className="space-y-2">
-              <Label htmlFor="kelompok_id">Kelompok</Label>
-              <select
-                id="kelompok_id"
-                name="kelompok_id"
-                required
-                defaultValue=""
-                className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
-              >
-                <option value="" disabled>Pilih kelompok…</option>
-                {kelompokOptions.map((k) => (
-                  <option key={k.id} value={k.id}>{k.nama}</option>
-                ))}
-              </select>
-              <p className="text-xs text-muted-foreground">Tanpa kupon, kelompok tidak bisa ditentukan otomatis — pilih manual.</p>
+        {pakaiKupon && (
+          <div className="space-y-3 rounded-md border bg-muted/30 p-3">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div>
+                <Label>Kupon (boleh dikosongkan)</Label>
+                <p className="text-xs text-muted-foreground">{kupons.length} kupon di-scan.</p>
+              </div>
+              <Button type="button" variant={scanOn ? "destructive" : "secondary"} size="sm" onClick={() => setScanOn((v) => !v)}>
+                {scanOn ? <><CameraOff /> Tutup Scanner</> : <><Camera /> Buka Scanner QR</>}
+              </Button>
             </div>
-          )
-        ) : (
-          <>
             {scanOn && <QrScanner onDetect={addKupon} active={scanOn} />}
             <div className="flex gap-2">
               <Input
@@ -264,7 +273,7 @@ export function PesertaForm({
                 ))}
               </div>
             )}
-          </>
+          </div>
         )}
       </div>
 
@@ -277,7 +286,7 @@ export function PesertaForm({
 
       <Button type="submit" disabled={pending} size="lg">
         {pending ? <Loader2 className="animate-spin" /> : <Save />}
-        {pending ? "Menyimpan..." : "Simpan Peserta"}
+        {pending ? "Menyimpan..." : "Simpan Anggota"}
       </Button>
     </form>
   );

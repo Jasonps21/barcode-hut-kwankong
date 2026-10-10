@@ -50,3 +50,7 @@ next-env.d.ts
 .claude/skills/
 .mcp.json
 .agents/skills/**/CHANGELOG.md
+/backup-produksi-*
+
+.vercel
+.env*

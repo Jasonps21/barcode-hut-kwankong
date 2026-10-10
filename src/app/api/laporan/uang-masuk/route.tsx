@@ -6,6 +6,7 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { formatJamWITA, formatRupiah, formatTanggalWITA } from "@/lib/utils";
 import { hanyaDonasiTerhitung } from "@/lib/donasi-sum";
 import { ambilSemuaBaris } from "@/lib/query-semua";
+import { pilihKegiatan } from "@/lib/kegiatan";
 
 // File bisa besar (ribuan baris + render PDF) — jangan dibatasi durasi default.
 export const maxDuration = 60;
@@ -35,7 +36,7 @@ function csvEscape(v: unknown): string {
   return s;
 }
 
-async function getRows(from: string, to: string, metode: string) {
+async function getRows(kegiatanId: string | null, from: string, to: string, metode: string) {
   const admin = createAdminClient();
   const { fromISO, toISO } = dayRange(from, to);
 
@@ -44,10 +45,11 @@ async function getRows(from: string, to: string, metode: string) {
   const makeQuery = () => {
     let q = hanyaDonasiTerhitung(
       admin
-        .from("peserta")
-        .select("nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok(nama)")
+        .from("donasi_lengkap")
+        .select("nama, nominal_donasi, metode_bayar, registered_at, created_by, kelompok:kelompok_id(nama)")
         .order("registered_at", { ascending: true })
         .order("id", { ascending: true }),
+      kegiatanId,
     );
     if (fromISO) q = q.gte("registered_at", fromISO);
     if (toISO) q = q.lte("registered_at", toISO);
@@ -74,10 +76,10 @@ async function getRows(from: string, to: string, metode: string) {
   return { rows, petugas, totalCash, totalTransfer };
 }
 
-function periodeLabel(from: string, to: string, metode: string): string {
+function periodeLabel(kegiatanNama: string | null, from: string, to: string, metode: string): string {
   const rentang = from || to ? `${from || "…"} s/d ${to || "…"}` : "Semua waktu";
   const metodeLabel = metode === "cash" ? "Cash" : metode === "transfer" ? "Transfer" : "Semua metode";
-  return `${rentang} · ${metodeLabel}`;
+  return `${kegiatanNama ? `${kegiatanNama} · ` : ""}${rentang} · ${metodeLabel}`;
 }
 
 function filenameFor(from: string, to: string, ext: string): string {
@@ -201,8 +203,9 @@ export async function GET(req: NextRequest) {
   const metode = metodeRaw === "cash" || metodeRaw === "transfer" ? metodeRaw : "all";
   const format = sp.get("format") ?? "csv";
 
-  const { rows, petugas, totalCash, totalTransfer } = await getRows(from, to, metode);
-  const periode = periodeLabel(from, to, metode);
+  const { kegiatan } = await pilihKegiatan(sp.get("kegiatan"));
+  const { rows, petugas, totalCash, totalTransfer } = await getRows(kegiatan?.id ?? null, from, to, metode);
+  const periode = periodeLabel(kegiatan?.nama ?? null, from, to, metode);
 
   if (format === "xlsx") {
     const data = rows.map((r) => ({

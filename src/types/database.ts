@@ -49,6 +49,10 @@ export interface Peserta {
   wa_status: WaStatus;
   wa_sent_at: string | null;
   wa_attempt_count: number;
+  /** true = jangan pernah kirimi WA. Cron dan antre-ulang melewatinya. */
+  wa_dikecualikan: boolean;
+  /** Alasan pengecualian; berawalan "Otomatis:" bila disetel sistem. */
+  wa_alasan_kecuali: string | null;
   created_at: string;
   created_by: string | null;
 }
@@ -95,4 +99,95 @@ export interface Kupon {
   assigned_by: string | null;
   redeemed_at: string | null;
   redeemed_by: string | null;
+  /** Kegiatan pemilik kupon — nomor kupon hanya unik di dalam satu kegiatan. */
+  kegiatan_id: string | null;
+  /** Donasi yang membuat kupon ini diberikan. Menggantikan peran `peserta_id`. */
+  donasi_id: string | null;
+}
+
+// ===================== MULTI-KEGIATAN =====================
+// `peserta` dulu menyatukan identitas + acara + satu setoran dalam satu baris.
+// Tiga hal itu sekarang terpisah: Anggota (siapa), Kegiatan (acara apa), dan
+// Donasi (setoran mana) — sehingga satu orang bisa menyetor berkali-kali dan
+// riwayatnya nyambung antar kegiatan.
+
+export interface Kegiatan {
+  id: string;
+  nama: string;
+  tahun: number | null;
+  tanggal_mulai: string | null;
+  tanggal_selesai: string | null;
+  /** Hanya satu kegiatan boleh aktif — dikunci lewat unique index di database. */
+  aktif: boolean;
+  /** Counter nomor tanda terima, berjalan sendiri per kegiatan. */
+  tt_terakhir: number;
+  /** false = kegiatan pencatatan saja; donasinya tidak memakai kupon. */
+  pakai_kupon: boolean;
+  keterangan: string | null;
+  created_at: string;
+}
+
+export interface Anggota {
+  id: string;
+  nama: string;
+  nama_hanzi: string | null;
+  pinyin: string | null;
+  alamat: string | null;
+  no_whatsapp: string | null;
+  kota_kabupaten: string | null;
+  provinsi: string | null;
+  jenis_usaha_id: string | null;
+  keterangan: string | null;
+  /** Buku penagihan SAAT INI. Berubah kalau anggota dipindah buku. */
+  buku_id: string | null;
+  aktif: boolean;
+  /** Menempel di anggota, bukan di donasi — yang bermasalah adalah nomornya. */
+  wa_dikecualikan: boolean;
+  wa_alasan_kecuali: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface Donasi {
+  id: string;
+  anggota_id: string;
+  kegiatan_id: string;
+  /**
+   * Buku pada SAAT transaksi terjadi (disalin, bukan di-join ke anggota).
+   * Kalau anggota pindah buku, rekap setoran lama tidak ikut berubah.
+   */
+  kelompok_id: string;
+  nominal: number;
+  metode_bayar: MetodeBayar;
+  bukti_transfer_path: string | null;
+  tanggal: string;
+  nomor_tt: number | null;
+  wa_status: WaStatus;
+  wa_sent_at: string | null;
+  wa_attempt_count: number;
+  keterangan: string | null;
+  peserta_id_lama: string | null;
+  created_at: string;
+  created_by: string | null;
+}
+
+export interface AnggotaBukuRiwayat {
+  id: string;
+  anggota_id: string;
+  dari_buku_id: string | null;
+  ke_buku_id: string;
+  alasan: string | null;
+  dipindah_oleh: string | null;
+  created_at: string;
+}
+
+export interface KegiatanKuponRange {
+  id: string;
+  kegiatan_id: string;
+  kelompok_id: string;
+  prefix: string;
+  range_start: number;
+  range_end: number;
+  padding: number;
+  created_at: string;
 }

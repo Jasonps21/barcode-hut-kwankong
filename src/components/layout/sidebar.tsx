@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  LayoutDashboard, Users, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog, MessageSquare, ClipboardList, ReceiptText, AlertTriangle, History, Ticket, Settings, Store,
+  LayoutDashboard, UserPlus, ScanLine, ScanBarcode, FileBarChart, Layers, UserCog, MessageSquare, ClipboardList, ReceiptText, AlertTriangle, History, Ticket, Settings, Store, CalendarDays, Contact,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import type { Role } from "@/types/database";
@@ -12,13 +12,14 @@ interface NavItem { href: string; label: string; icon: React.ComponentType<{ cla
 
 const NAV: NavItem[] = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard, roles: ["admin", "petugas_pendaftaran", "petugas_distribusi"] },
+  { href: "/kegiatan", label: "Kegiatan", icon: CalendarDays, roles: ["admin"] },
+  { href: "/anggota", label: "Anggota", icon: Contact, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/kelompok", label: "Kelompok", icon: Layers, roles: ["admin"] },
   { href: "/kupon", label: "Cek Kupon", icon: Ticket, roles: ["admin"] },
-  { href: "/peserta", label: "Peserta", icon: Users, roles: ["admin", "petugas_pendaftaran"] },
-  { href: "/peserta/tambah", label: "Tambah Peserta", icon: UserPlus, roles: ["admin", "petugas_pendaftaran"] },
+  { href: "/anggota/tambah", label: "Tambah Anggota", icon: UserPlus, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/jenis-usaha", label: "Jenis Usaha", icon: Store, roles: ["admin"] },
   { href: "/transaksi", label: "Transaksi", icon: ReceiptText, roles: ["admin", "petugas_pendaftaran"] },
-  { href: "/scan-pendaftaran", label: "Scan Pendaftaran", icon: ScanLine, roles: ["admin", "petugas_pendaftaran"] },
+  { href: "/scan-pendaftaran", label: "Input Donasi", icon: ScanLine, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/laporan-saya", label: "Laporan Saya", icon: ClipboardList, roles: ["admin", "petugas_pendaftaran"] },
   { href: "/scan", label: "Scan Penukaran", icon: ScanBarcode, roles: ["admin", "petugas_distribusi"] },
   { href: "/wa-log", label: "Log WhatsApp", icon: MessageSquare, roles: ["admin"] },
