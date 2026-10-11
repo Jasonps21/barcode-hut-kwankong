@@ -3,10 +3,10 @@ import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
 import { Sidebar } from "@/components/layout/sidebar";
 import { Header } from "@/components/layout/header";
+import { NAMA_APLIKASI } from "@/lib/app";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const profile = await requireProfile();
-  const eventName = process.env.NEXT_PUBLIC_EVENT_NAME ?? "Sistem Bingkisan";
 
   let kelompokNama: string | null = null;
   if (profile.kelompok_id) {
@@ -24,12 +24,12 @@ export default async function DashboardLayout({ children }: { children: React.Re
       <aside className="hidden w-64 shrink-0 border-r bg-background md:flex md:flex-col">
         <div className="flex h-14 items-center gap-2 border-b px-4">
           <Package className="h-5 w-5 text-primary" />
-          <p className="text-sm font-semibold leading-tight truncate">{eventName}</p>
+          <p className="text-sm font-semibold leading-tight truncate">{NAMA_APLIKASI}</p>
         </div>
         <Sidebar role={profile.role} />
       </aside>
       <div className="flex flex-1 flex-col">
-        <Header profile={profile} kelompokNama={kelompokNama} eventName={eventName} />
+        <Header profile={profile} kelompokNama={kelompokNama} eventName={NAMA_APLIKASI} />
         <main className="flex-1 p-4 md:p-6 lg:p-8">{children}</main>
       </div>
     </div>

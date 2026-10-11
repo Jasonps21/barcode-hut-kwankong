@@ -1,17 +1,17 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import { ErrorListener } from "@/components/error-listener";
+import { NAMA_APLIKASI } from "@/lib/app";
 
-const eventName = process.env.NEXT_PUBLIC_EVENT_NAME ?? "Sistem Bingkisan";
 
 export const metadata: Metadata = {
-  title: { default: eventName, template: `%s · ${eventName}` },
-  description: `Sistem barcode penerima bingkisan - ${eventName}`,
-  applicationName: eventName,
+  title: { default: NAMA_APLIKASI, template: `%s · ${NAMA_APLIKASI}` },
+  description: `${NAMA_APLIKASI} — pencatatan donatur & kupon bingkisan`,
+  applicationName: NAMA_APLIKASI,
   appleWebApp: {
     capable: true,
     statusBarStyle: "default",
-    title: eventName,
+    title: NAMA_APLIKASI,
   },
   formatDetection: { telephone: false },
 };

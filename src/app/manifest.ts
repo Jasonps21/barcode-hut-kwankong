@@ -1,11 +1,12 @@
 import type { MetadataRoute } from "next";
+import { NAMA_APLIKASI } from "@/lib/app";
 
 export default function manifest(): MetadataRoute.Manifest {
-  const name = process.env.NEXT_PUBLIC_EVENT_NAME ?? "Sistem Bingkisan";
+  const name = NAMA_APLIKASI;
   return {
     name,
-    short_name: "Bingkisan",
-    description: `Sistem barcode penerima bingkisan — ${name}`,
+    short_name: "Donatur Kwankong",
+    description: `${name} — pencatatan donatur & kupon bingkisan`,
     start_url: "/dashboard",
     scope: "/",
     display: "standalone",

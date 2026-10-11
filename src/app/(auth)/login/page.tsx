@@ -7,10 +7,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { loginAction, type LoginState } from "./actions";
+import { NAMA_APLIKASI } from "@/lib/app";
 
 export default function LoginPage() {
   const [state, action, pending] = useActionState<LoginState, FormData>(loginAction, undefined);
-  const eventName = process.env.NEXT_PUBLIC_EVENT_NAME ?? "Sistem Bingkisan";
 
   return (
     <Card className="border-none shadow-xl">
@@ -19,7 +19,7 @@ export default function LoginPage() {
           <Package className="h-6 w-6 text-primary" />
         </div>
         <CardTitle className="text-2xl">Masuk</CardTitle>
-        <CardDescription>{eventName}</CardDescription>
+        <CardDescription>{NAMA_APLIKASI}</CardDescription>
       </CardHeader>
       <CardContent>
         <form action={action} className="space-y-4">

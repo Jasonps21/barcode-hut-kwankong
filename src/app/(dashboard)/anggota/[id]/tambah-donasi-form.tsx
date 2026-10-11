@@ -1,7 +1,7 @@
 "use client";
 
 import { useActionState, useState } from "react";
-import { Camera, CameraOff, Loader2, Pencil, Plus, Save, X } from "lucide-react";
+import { Camera, CameraOff, Loader2, Pencil, Phone, Plus, Save, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -110,25 +110,48 @@ export function TambahDonasiForm({
         )}
 
         {noWhatsappSekarang !== undefined && (
-          <div className="space-y-1.5 sm:col-span-2">
-            {ubahWa ? (
-              <>
-                <Label htmlFor="no_whatsapp_baru">No WhatsApp baru</Label>
-                <Input
-                  id="no_whatsapp_baru"
-                  name="no_whatsapp_baru"
-                  inputMode="tel"
-                  placeholder="08xxxxxxxxxx"
-                  defaultValue={noWhatsappSekarang ?? ""}
-                />
+          <div className="rounded-md border p-3 sm:col-span-2">
+            <div className="flex flex-wrap items-center justify-between gap-3">
+              <div className="flex min-w-0 items-center gap-3">
+                <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-700 dark:text-emerald-400">
+                  <Phone className="h-4 w-4" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs text-muted-foreground">No WhatsApp anggota</p>
+                  <p className={noWhatsappSekarang ? "font-mono text-sm font-medium" : "text-sm italic text-muted-foreground"}>
+                    {noWhatsappSekarang || "Belum ada nomor"}
+                  </p>
+                </div>
+              </div>
+              {!ubahWa && (
+                <Button type="button" variant="outline" size="sm" onClick={() => setUbahWa(true)}>
+                  <Pencil /> {noWhatsappSekarang ? "Ubah nomor" : "Tambah nomor"}
+                </Button>
+              )}
+            </div>
+
+            {/* Input baru hanya ada di DOM saat dibuka; tombol Batal mencabutnya
+                sehingga nomor lama tidak ikut terkirim sebagai "nomor baru". */}
+            {ubahWa && (
+              <div className="mt-3 space-y-1.5 border-t pt-3">
+                <Label htmlFor="no_whatsapp_baru">Nomor baru</Label>
+                <div className="flex gap-2">
+                  <Input
+                    id="no_whatsapp_baru"
+                    name="no_whatsapp_baru"
+                    inputMode="tel"
+                    placeholder="08xxxxxxxxxx"
+                    defaultValue={noWhatsappSekarang ?? ""}
+                    autoFocus
+                  />
+                  <Button type="button" variant="ghost" onClick={() => setUbahWa(false)}>
+                    <X /> Batal
+                  </Button>
+                </div>
                 <p className="text-xs text-muted-foreground">
-                  Disimpan ke data anggota dan dipakai untuk tanda terima setoran ini.
+                  Disimpan ke data anggota saat setoran ini disimpan.
                 </p>
-              </>
-            ) : (
-              <Button type="button" variant="link" size="sm" className="h-auto p-0 text-xs" onClick={() => setUbahWa(true)}>
-                <Pencil className="h-3 w-3" /> Ubah No HP ({noWhatsappSekarang || "belum ada"})
-              </Button>
+              </div>
             )}
           </div>
         )}
