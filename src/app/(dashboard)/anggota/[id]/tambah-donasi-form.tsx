@@ -31,12 +31,11 @@ export interface PilihanKegiatan {
 export function TambahDonasiForm({
   anggotaId,
   kegiatan,
-  kegiatanAwalId,
   noWhatsappSekarang,
 }: {
   anggotaId: string;
-  kegiatan: PilihanKegiatan[];
-  kegiatanAwalId: string;
+  /** Kegiatan yang sedang aktif — satu-satunya tujuan setoran, tidak bisa dipilih. */
+  kegiatan: PilihanKegiatan;
   /** Bila diisi, form menawarkan "Ubah No HP" — nomor baru ikut tersimpan ke anggota. */
   noWhatsappSekarang?: string | null;
 }) {
@@ -45,10 +44,8 @@ export function TambahDonasiForm({
   const [scanOn, setScanOn] = useState(false);
   const [manual, setManual] = useState("");
   const [metode, setMetode] = useState("");
-  const [kegiatanId, setKegiatanId] = useState(kegiatanAwalId);
   const [ubahWa, setUbahWa] = useState(false);
-  const terpilih = kegiatan.find((k) => k.id === kegiatanId);
-  const pakaiKupon = terpilih?.pakai_kupon ?? false;
+  const pakaiKupon = kegiatan.pakai_kupon;
 
   function tambahKupon(nomor: string) {
     const bersih = nomor.trim().toUpperCase();
@@ -71,33 +68,10 @@ export function TambahDonasiForm({
       )}
 
       <div className="grid gap-4 sm:grid-cols-2">
-        <div className="space-y-1.5 sm:col-span-2">
-          <Label htmlFor="kegiatan_id">Kegiatan *</Label>
-          <Select
-            id="kegiatan_id"
-            name="kegiatan_id"
-            required
-            value={kegiatanId}
-            onChange={(e) => {
-              setKegiatanId(e.target.value);
-              // Kupon milik kegiatan lain tidak berlaku di kegiatan baru.
-              setKupons([]);
-              setScanOn(false);
-            }}
-          >
-            {kegiatan.map((k) => (
-              <option key={k.id} value={k.id}>
-                {k.nama}
-                {k.aktif ? " (berjalan)" : ""}
-                {k.pakai_kupon ? "" : " (tanpa kupon)"}
-              </option>
-            ))}
-          </Select>
-          {!pakaiKupon && (
-            <p className="text-xs text-muted-foreground">
-              Kegiatan ini hanya mencatat sumbangan, tidak perlu kupon.
-            </p>
-          )}
+        <div className="rounded-md border bg-muted/40 px-3 py-2 text-sm sm:col-span-2">
+          <span className="text-muted-foreground">Dicatat untuk kegiatan </span>
+          <span className="font-semibold">{kegiatan.nama}</span>
+          {!pakaiKupon && <span className="text-muted-foreground"> · tanpa kupon</span>}
         </div>
 
         <div className="space-y-1.5">
@@ -217,7 +191,7 @@ export function TambahDonasiForm({
 
       <Button type="submit" disabled={pending}>
         {pending ? <Loader2 className="animate-spin" /> : <Save />}
-        {pending ? "Menyimpan…" : `Simpan Donasi ke ${terpilih?.nama ?? "kegiatan"}`}
+        {pending ? "Menyimpan…" : `Simpan Donasi ke ${kegiatan.nama}`}
       </Button>
     </form>
   );

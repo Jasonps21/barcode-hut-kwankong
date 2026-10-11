@@ -145,7 +145,9 @@ export default async function KegiatanPage() {
                             <ConfirmButton
                               variant="outline"
                               size="sm"
-                              message={`Jadikan "${k.nama}" sebagai kegiatan berjalan? Semua input donasi baru akan masuk ke kegiatan ini.`}
+                              message={`Jadikan "${k.nama}" sebagai kegiatan berjalan?
+
+Kegiatan yang sekarang aktif akan dinonaktifkan, dan SEMUA input donasi oleh semua petugas akan langsung masuk ke "${k.nama}".`}
                             >
                               Aktifkan
                             </ConfirmButton>

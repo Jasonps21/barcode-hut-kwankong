@@ -2,7 +2,7 @@ import Link from "next/link";
 import { ArrowLeft } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { getKegiatanAktif, getSemuaKegiatan } from "@/lib/kegiatan";
+import { getKegiatanAktif } from "@/lib/kegiatan";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { AnggotaForm } from "./anggota-form";
 
@@ -14,12 +14,11 @@ export default async function TambahAnggotaPage() {
   const isAdmin = profile.role === "admin";
   const supabase = await createClient();
 
-  const [{ data: bukuData }, { data: jenisUsahaData }, semuaKegiatan, kegiatanAktif] = await Promise.all([
+  const [{ data: bukuData }, { data: jenisUsahaData }, kegiatanAktif] = await Promise.all([
     isAdmin
       ? supabase.from("kelompok").select("id, nama").order("nama", { ascending: true })
       : Promise.resolve({ data: [] }),
     supabase.from("jenis_usaha").select("id, nama").order("nama", { ascending: true }),
-    getSemuaKegiatan(),
     getKegiatanAktif(),
   ]);
 
@@ -48,8 +47,11 @@ export default async function TambahAnggotaPage() {
             isAdmin={isAdmin}
             bukuOptions={(bukuData ?? []) as { id: string; nama: string }[]}
             jenisUsahaOptions={(jenisUsahaData ?? []) as { id: string; nama: string }[]}
-            kegiatan={semuaKegiatan.map((k) => ({ id: k.id, nama: k.nama, aktif: k.aktif, pakai_kupon: k.pakai_kupon }))}
-            kegiatanAwalId={kegiatanAktif?.id ?? semuaKegiatan[0]?.id ?? ""}
+            kegiatan={
+              kegiatanAktif
+                ? { id: kegiatanAktif.id, nama: kegiatanAktif.nama, aktif: kegiatanAktif.aktif, pakai_kupon: kegiatanAktif.pakai_kupon }
+                : null
+            }
           />
         </CardContent>
       </Card>

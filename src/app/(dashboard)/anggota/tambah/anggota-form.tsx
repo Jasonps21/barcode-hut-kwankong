@@ -27,14 +27,13 @@ export function AnggotaForm({
   isAdmin = false,
   bukuOptions = [],
   jenisUsahaOptions = [],
-  kegiatan = [],
-  kegiatanAwalId = "",
+  kegiatan = null,
 }: {
   isAdmin?: boolean;
   bukuOptions?: { id: string; nama: string }[];
   jenisUsahaOptions?: { id: string; nama: string }[];
-  kegiatan?: PilihanKegiatan[];
-  kegiatanAwalId?: string;
+  /** Kegiatan yang sedang aktif; null = setoran pertama tidak bisa diisi. */
+  kegiatan?: PilihanKegiatan | null;
 }) {
   const [state, action, pending] = useActionState<AksiState, FormData>(createAnggotaAction, undefined);
   const [kupons, setKupons] = useState<string[]>([]);
@@ -42,7 +41,6 @@ export function AnggotaForm({
   const [manual, setManual] = useState("");
   const [namaHanzi, setNamaHanzi] = useState("");
   const [metode, setMetode] = useState("");
-  const [kegiatanId, setKegiatanId] = useState(kegiatanAwalId);
   const pinyinPreview = useMemo(() => hanziToPinyin(namaHanzi), [namaHanzi]);
 
   const [provinsi, setProvinsi] = useState("");
@@ -52,8 +50,7 @@ export function AnggotaForm({
   const [noWhatsapp, setNoWhatsapp] = useState("");
   const [nomorUsaha, setNomorUsaha] = useState<NomorUsahaRow[]>([emptyNomorUsahaRow()]);
 
-  const terpilih = kegiatan.find((k) => k.id === kegiatanId);
-  const pakaiKupon = terpilih?.pakai_kupon ?? false;
+  const pakaiKupon = kegiatan?.pakai_kupon ?? false;
 
   const kotaOptions = useMemo(
     () => (provinsi ? kotaUntukProvinsi(provinsi) : semuaKota()),
@@ -174,36 +171,17 @@ export function AnggotaForm({
 
       <NomorUsahaEditor noWhatsapp={noWhatsapp} rows={nomorUsaha} onChange={setNomorUsaha} />
 
+      {kegiatan ? (
       <div className="space-y-4 rounded-lg border p-4">
         <div>
           <Label className="text-base">Setoran pertama (opsional)</Label>
           <p className="text-xs text-muted-foreground">
+            Dicatat untuk kegiatan <span className="font-semibold text-foreground">{kegiatan.nama}</span>.
             Kosongkan nominal bila anggota ini baru didata dan belum menyetor.
           </p>
         </div>
 
         <div className="grid gap-4 md:grid-cols-2">
-          <div className="space-y-2 md:col-span-2">
-            <Label htmlFor="kegiatan_id">Kegiatan</Label>
-            <Select
-              id="kegiatan_id"
-              name="kegiatan_id"
-              value={kegiatanId}
-              onChange={(e) => {
-                setKegiatanId(e.target.value);
-                setKupons([]);
-                setScanOn(false);
-              }}
-            >
-              {kegiatan.map((k) => (
-                <option key={k.id} value={k.id}>
-                  {k.nama}
-                  {k.aktif ? " (berjalan)" : ""}
-                  {k.pakai_kupon ? "" : " (tanpa kupon)"}
-                </option>
-              ))}
-            </Select>
-          </div>
           <div className="space-y-2">
             <Label htmlFor="nominal">Nominal Donasi</Label>
             <RupiahInput id="nominal" name="nominal" placeholder="0" />
@@ -276,6 +254,11 @@ export function AnggotaForm({
           </div>
         )}
       </div>
+      ) : (
+        <p className="rounded-lg border p-4 text-sm text-muted-foreground">
+          Belum ada kegiatan aktif, jadi setoran belum bisa dicatat. Anggota tetap bisa disimpan.
+        </p>
+      )}
 
       {state?.error && (
         <div className="rounded-md bg-destructive/10 px-3 py-2 text-sm text-destructive">{state.error}</div>

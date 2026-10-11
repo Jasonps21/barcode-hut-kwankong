@@ -3,7 +3,6 @@
 import { revalidatePath } from "next/cache";
 import { requireProfile, canEditPeserta } from "@/lib/auth";
 import { createAdminClient } from "@/lib/supabase/admin";
-import { getKegiatanAktif } from "@/lib/kegiatan";
 import { catatDonasi, tanggalSetor } from "@/lib/donasi";
 import { hanziToPinyin } from "@/lib/pinyin";
 import { sanitizeWaParam } from "@/lib/wa-template";
@@ -45,14 +44,15 @@ async function ambilAnggotaBerizin(
   return { anggota };
 }
 
-/** Kegiatan dari form, atau kegiatan yang sedang berjalan bila tidak dipilih. */
-async function ambilKegiatan(admin: AdminClient, kegiatanId: string): Promise<Kegiatan | { error: string }> {
-  if (kegiatanId) {
-    const { data } = await admin.from("kegiatan").select("*").eq("id", kegiatanId).maybeSingle();
-    return (data as Kegiatan) ?? { error: "Kegiatan yang dipilih tidak ditemukan." };
-  }
-  const aktif = await getKegiatanAktif();
-  return aktif ?? { error: "Belum ada kegiatan yang aktif. Admin perlu mengaktifkan kegiatan dulu di halaman Kegiatan." };
+/**
+ * Setoran SELALU masuk ke kegiatan yang sedang aktif — satu-satunya, dikunci
+ * unique index di database. Sengaja tidak menerima kegiatan dari form:
+ * kalau petugas bisa memilih, satu salah klik membuat uang tercatat di acara
+ * yang salah. Pindah kegiatan hanya lewat tombol Aktifkan di halaman Kegiatan.
+ */
+async function kegiatanBerjalan(admin: AdminClient): Promise<Kegiatan | { error: string }> {
+  const { data } = await admin.from("kegiatan").select("*").eq("aktif", true).maybeSingle();
+  return (data as Kegiatan) ?? { error: "Belum ada kegiatan yang aktif. Admin perlu mengaktifkan kegiatan dulu di halaman Kegiatan." };
 }
 
 interface NomorUsahaInput {
@@ -184,7 +184,7 @@ export async function createAnggotaAction(
     if (metodeBayar === "transfer" && !(buktiFile && buktiFile.size > 0)) {
       return { error: "Bukti transfer wajib diupload — foto belum diupload." };
     }
-    const k = await ambilKegiatan(admin, String(formData.get("kegiatan_id") ?? "").trim());
+    const k = await kegiatanBerjalan(admin);
     if ("error" in k) return k;
     kegiatan = k;
   } else if (kuponList.length) {
@@ -322,9 +322,7 @@ export async function tambahDonasiAction(
     return { error: "Bukti transfer wajib diupload — foto belum diupload." };
   }
 
-  // Kegiatan dipilih di form supaya sumbangan untuk kegiatan yang sudah lewat
-  // juga bisa dicatat. Tanpa pilihan, jatuh ke kegiatan yang sedang berjalan.
-  const kegiatan = await ambilKegiatan(admin, String(formData.get("kegiatan_id") ?? "").trim());
+  const kegiatan = await kegiatanBerjalan(admin);
   if ("error" in kegiatan) return kegiatan;
 
   const izin = await ambilAnggotaBerizin(admin, anggotaId, profile);

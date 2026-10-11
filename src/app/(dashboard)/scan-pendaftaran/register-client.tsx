@@ -19,10 +19,9 @@ import { searchAnggotaAction, type AnggotaHit } from "./actions";
  */
 export function ScanPendaftaranClient({
   kegiatan,
-  kegiatanAwalId,
 }: {
-  kegiatan: PilihanKegiatan[];
-  kegiatanAwalId: string;
+  /** Kegiatan yang sedang aktif — satu-satunya tujuan setoran. */
+  kegiatan: PilihanKegiatan;
 }) {
   const [query, setQuery] = useState("");
   const [hasil, setResults] = useState<AnggotaHit[]>([]);
@@ -39,10 +38,10 @@ export function ScanPendaftaranClient({
     if (debounce.current) clearTimeout(debounce.current);
     if (query.trim().length < 2) return;
     debounce.current = setTimeout(() => {
-      startSearch(async () => setResults(await searchAnggotaAction(query, kegiatanAwalId || null)));
+      startSearch(async () => setResults(await searchAnggotaAction(query, kegiatan.id)));
     }, 300);
     return () => { if (debounce.current) clearTimeout(debounce.current); };
-  }, [query, kegiatanAwalId]);
+  }, [query, kegiatan.id]);
 
   // ---- Tahap 1: cari & pilih anggota ----
   if (!selected) {
@@ -151,7 +150,6 @@ export function ScanPendaftaranClient({
         key={selected.id}
         anggotaId={selected.id}
         kegiatan={kegiatan}
-        kegiatanAwalId={kegiatanAwalId}
         noWhatsappSekarang={selected.no_whatsapp}
       />
     </div>

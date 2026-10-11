@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { UserPlus } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
-import { getKegiatanAktif, getSemuaKegiatan } from "@/lib/kegiatan";
+import { getKegiatanAktif } from "@/lib/kegiatan";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { ScanPendaftaranClient } from "./register-client";
 
@@ -10,7 +10,7 @@ export const maxDuration = 60;
 
 export default async function InputDonasiPage() {
   await requireProfile(["admin", "petugas_pendaftaran"]);
-  const [semuaKegiatan, kegiatanAktif] = await Promise.all([getSemuaKegiatan(), getKegiatanAktif()]);
+  const kegiatanAktif = await getKegiatanAktif();
 
   return (
     <div className="space-y-6">
@@ -37,13 +37,19 @@ export default async function InputDonasiPage() {
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {semuaKegiatan.length ? (
+          {kegiatanAktif ? (
             <ScanPendaftaranClient
-              kegiatan={semuaKegiatan.map((k) => ({ id: k.id, nama: k.nama, aktif: k.aktif, pakai_kupon: k.pakai_kupon }))}
-              kegiatanAwalId={kegiatanAktif?.id ?? semuaKegiatan[0].id}
+              kegiatan={{
+                id: kegiatanAktif.id,
+                nama: kegiatanAktif.nama,
+                aktif: kegiatanAktif.aktif,
+                pakai_kupon: kegiatanAktif.pakai_kupon,
+              }}
             />
           ) : (
-            <p className="text-sm text-muted-foreground">Belum ada kegiatan. Admin perlu membuat kegiatan dulu.</p>
+            <p className="text-sm text-muted-foreground">
+              Belum ada kegiatan aktif. Admin perlu mengaktifkan kegiatan dulu di halaman Kegiatan.
+            </p>
           )}
         </CardContent>
       </Card>

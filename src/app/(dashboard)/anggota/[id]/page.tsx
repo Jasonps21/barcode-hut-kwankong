@@ -3,7 +3,7 @@ import { notFound } from "next/navigation";
 import { ArrowLeft, ArrowRightLeft, History, Phone, MapPin, Pencil } from "lucide-react";
 import { requireProfile } from "@/lib/auth";
 import { createClient } from "@/lib/supabase/server";
-import { getKegiatanAktif, getSemuaKegiatan } from "@/lib/kegiatan";
+import { getKegiatanAktif } from "@/lib/kegiatan";
 import { formatRupiah, formatTanggalWITA, formatTanggalJamWITA } from "@/lib/utils";
 import { buatPesanPengingat, totalRiwayat, type BarisRiwayat } from "@/lib/riwayat-donasi";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
@@ -58,7 +58,7 @@ export default async function AnggotaDetailPage(props: { params: Promise<{ id: s
   if (!anggotaData) notFound();
   const anggota = anggotaData as unknown as AnggotaDetail;
 
-  const [{ data: donasiData }, { data: kelompokData }, { data: riwayatBukuData }, kegiatanAktif, semuaKegiatan] =
+  const [{ data: donasiData }, { data: kelompokData }, { data: riwayatBukuData }, kegiatanAktif] =
     await Promise.all([
       supabase
         .from("donasi")
@@ -72,7 +72,6 @@ export default async function AnggotaDetailPage(props: { params: Promise<{ id: s
         .eq("anggota_id", id)
         .order("created_at", { ascending: false }),
       getKegiatanAktif(),
-      getSemuaKegiatan(),
     ]);
 
   const donasi = (donasiData ?? []) as unknown as DonasiRow[];
@@ -287,22 +286,21 @@ export default async function AnggotaDetailPage(props: { params: Promise<{ id: s
         <CardHeader>
           <CardTitle>Tambah Sumbangan Baru</CardTitle>
           <CardDescription>
-            {semuaKegiatan.length
-              ? "Pilih kegiatannya — kegiatan yang sudah lewat juga bisa dicatat. Anggota boleh menyetor berkali-kali di kegiatan yang sama, tiap setoran punya tanggal dan nomor tanda terima sendiri."
-              : "Belum ada kegiatan. Admin perlu membuat kegiatan dulu sebelum donasi bisa dicatat."}
+            {kegiatanAktif
+              ? `Setoran dicatat untuk kegiatan "${kegiatanAktif.nama}". Anggota boleh menyetor berkali-kali di kegiatan yang sama — tiap setoran punya tanggal dan nomor tanda terima sendiri.`
+              : "Belum ada kegiatan aktif. Admin perlu mengaktifkan kegiatan dulu sebelum donasi bisa dicatat."}
           </CardDescription>
         </CardHeader>
         <CardContent>
-          {semuaKegiatan.length ? (
+          {kegiatanAktif ? (
             <TambahDonasiForm
               anggotaId={anggota.id}
-              kegiatan={semuaKegiatan.map((k) => ({
-                id: k.id,
-                nama: k.nama,
-                aktif: k.aktif,
-                pakai_kupon: k.pakai_kupon,
-              }))}
-              kegiatanAwalId={kegiatanAktif?.id ?? semuaKegiatan[0].id}
+              kegiatan={{
+                id: kegiatanAktif.id,
+                nama: kegiatanAktif.nama,
+                aktif: kegiatanAktif.aktif,
+                pakai_kupon: kegiatanAktif.pakai_kupon,
+              }}
             />
           ) : (
             <Link

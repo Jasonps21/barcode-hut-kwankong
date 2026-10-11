@@ -56,7 +56,7 @@ export async function buatKegiatanAction(
   return {
     success: pakaiKupon
       ? `Kegiatan "${nama}" dibuat. Aktifkan bila sudah siap menerima donasi.`
-      : `Kegiatan "${nama}" dibuat tanpa kupon. Donasinya bisa langsung dicatat dari halaman anggota.`,
+      : `Kegiatan "${nama}" dibuat tanpa kupon. Aktifkan bila sudah siap menerima donasi.`,
   };
 }
 
